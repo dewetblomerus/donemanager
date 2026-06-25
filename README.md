@@ -22,3 +22,7 @@ A central backend coordinates routine tasks for the household.
 - Remind everyone when a task is not done by a certain time.
 - Let one person acknowledge a task so everyone knows it is handled.
 - If someone missed a notification, scanning the NFC tag before acting can immediately show that the task was already done, when, and by whom.
+
+## Architecture
+
+See [architecture/README.md](architecture/README.md) for the high-level system diagram and current architecture notes.
