@@ -2,6 +2,7 @@
 
 This directory captures high-level system architecture for Done Manager.
 
+- [API](api.md)
 - [Database](database.md)
 
 ## High-Level Flow
