@@ -1,0 +1,2 @@
+- Add an expiration_time field to task occurrences, so each occurrence can expire after a set cutoff.
+- Look up the guidance around Ecto datetime from the cars_platform PR template.

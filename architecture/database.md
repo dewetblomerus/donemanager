@@ -13,12 +13,16 @@ erDiagram
     households ||--o{ integration_bearer_tokens : authorizes
     users ||--o{ pushover_destinations : owns
     households ||--o{ tasks : owns
-    tasks ||--o{ nfc_tags : triggered_by
+    households ||--o{ nfc_tags : owns
+    households ||--o{ automation_commands : owns
+    tasks ||--o{ automation_commands : receives
+    nfc_tags ||--o{ automation_commands : invokes
     tasks ||--o{ task_occurrences : schedules
     task_occurrences ||--o{ task_events : records
     task_occurrences ||--o{ notification_deliveries : notifies_about
     users ||--o{ task_events : performs
     nfc_tags ||--o{ task_events : source
+    automation_commands ||--o{ task_events : produces
     integration_bearer_tokens ||--o{ task_events : authenticates
     pushover_destinations ||--o{ notification_deliveries : receives
 
@@ -54,6 +58,7 @@ erDiagram
         uuid user_id FK
         uuid created_by_user_id FK
         string label
+        string prefix
         string token_hash
         string source
         datetime revoked_at
@@ -78,8 +83,11 @@ erDiagram
         uuid household_id FK
         string name
         string description
-        string cadence_type
+        string task_type
+        string cadence_frequency
+        string[] cadence_weekdays
         time due_time
+        time expiration_time
         boolean active
         datetime inserted_at
         datetime updated_at
@@ -90,14 +98,29 @@ erDiagram
         uuid task_id FK
         date occurrence_date
         datetime due_at
+        datetime expires_at
         datetime inserted_at
     }
 
     nfc_tags {
         uuid id PK
-        uuid task_id FK
+        uuid household_id FK
         string label
         string external_id
+        boolean active
+        datetime inserted_at
+        datetime updated_at
+    }
+
+    automation_commands {
+        uuid id PK
+        uuid household_id FK
+        uuid task_id FK
+        uuid nfc_tag_id FK
+        string label
+        string command_type
+        json config
+        boolean active
         datetime inserted_at
         datetime updated_at
     }
@@ -107,6 +130,7 @@ erDiagram
         uuid task_occurrence_id FK
         uuid user_id FK
         uuid nfc_tag_id FK
+        uuid automation_command_id FK
         uuid integration_bearer_token_id FK
         string event_type
         string source
@@ -120,7 +144,6 @@ erDiagram
         uuid pushover_destination_id FK
         string notification_type
         string status
-        string pushover_receipt
         datetime sent_at
         datetime inserted_at
         datetime updated_at
@@ -133,7 +156,7 @@ Browser users authenticate through Auth0. The `users.auth0_sub` field stores the
 
 External integrations use bearer tokens. NFC Tasks is the first integration, but the same model can support QR-code flows, Arduino buttons, Home Assistant, or other automation clients. Each token belongs to a household and may map back to a `users` row when the integration should act on behalf of a person.
 
-Bearer tokens should be stored as hashes, scoped to task-event endpoints, and revocable per device or integration.
+Bearer tokens should be stored with a lookup `prefix` and a `token_hash`, scoped to integration-event endpoints, and revocable per device or integration. The full token should only be shown once when created. Requests should extract the prefix, load the non-revoked token row, then verify the full bearer token against `token_hash`.
 
 Only a household owner can create integration bearer tokens for that household. Token management screens and APIs should enforce the owner's membership role before generating or revoking tokens, and should record the owner in `created_by_user_id`.
 
@@ -147,10 +170,20 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `household_memberships.role` can start simple, such as `owner` or `member`.
 - Only users with an `owner` household membership can create integration bearer tokens for that household.
 - `pushover_destinations` is intentionally Pushover-specific. If other notification integrations are added later, they can get their own tables first.
-- `tasks` stores the task definition and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
-- `task_occurrences` stores each concrete expected instance, such as `Spot breakfast for 2026-06-25`.
+- `tasks` stores the task definition, behavior type, and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
+- `task_type` distinguishes task behavior. V1 values can start with `RECURRING` for cadence-generated tasks and `ONE_OFF` for tasks created by commands such as laundry timers.
+- V1 task cadence uses normalized columns that intentionally mirror a small iCalendar RRULE subset. `cadence_frequency` uses uppercase constants such as `DAILY` or `WEEKLY`. `cadence_weekdays` uses uppercase iCalendar weekday tokens such as `MO`, `TU`, `WE`, `TH`, `FR`, `SA`, and `SU`.
+- For V1, `cadence_weekdays` should be empty for `DAILY` tasks and non-empty for `WEEKLY` tasks. Future recurrence complexity can grow from this shape with columns such as `cadence_interval`, `cadence_monthdays`, `cadence_until`, or `cadence_count`.
+- `tasks.due_time` and nullable `tasks.expiration_time` are household-local times of day. If `expiration_time` is blank, generated occurrences do not expire by cutoff.
+- `task_occurrences` stores each concrete expected instance, such as `Spot breakfast for 2026-06-25`. `due_at` is when the task is due, and nullable `expires_at` is the concrete cutoff after which the occurrence should no longer be treated as the current actionable occurrence.
+- When generating a recurring occurrence, if `expiration_time` is later than `due_time`, `expires_at` is on the same local date as `due_at`. If `expiration_time` is less than or equal to `due_time`, `expires_at` is on the next local date. For example, a task due at 22:00 with `expiration_time` 02:00 expires at 02:00 the next day.
 - `task_occurrences` should not store status. Status is derived from related `task_events`.
-- `task_events.event_type` can represent events such as `completed`, `acknowledged`, `reminder_sent`, or `skipped`.
+- `nfc_tags` represents physical or integration inputs owned by a household, not tasks. The NFC action should only need to send an opaque `external_id` with an integration bearer token; the backend resolves that input to a configured command.
+- `automation_commands` maps an input to task-specific intent. `label` is the UI/admin name for the configured command, such as `Dog food bin scan` or `Washer timer`. V1 command types can start with `ATTEMPT_COMPLETION` and `TOGGLE_TIMER`.
+- `ATTEMPT_COMPLETION` is state-dependent. If the current occurrence is incomplete, the command can produce a `completed` event. If it was already completed, it should not undo the task; it can produce a `duplicate_completion_attempted` event and notify the scanner.
+- `TOGGLE_TIMER` is state-dependent. If no timer occurrence is active, the command can create a delayed occurrence and produce a `timer_started` event. If the timer is already active, it can cancel that occurrence and produce a `timer_cancelled` event.
+- `automation_commands.config` stores command-specific settings, such as `{ "delay_minutes": 60 }` for a laundry timer.
+- `task_events.event_type` can represent outcomes such as `completed`, `duplicate_completion_attempted`, `timer_started`, `timer_cancelled`, `acknowledged`, `reminder_sent`, or `skipped`.
 - `task_events.source` can represent whether the event came from `nfc`, `web`, or a system process.
 - Acknowledgements are task events, not a separate table.
 - Anonymous physical acknowledgements can be recorded as task events through an integration token without a `user_id`, such as `acknowledged by Arduino button press`.
