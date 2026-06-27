@@ -13,7 +13,7 @@ kill_signal = 'SIGTERM'
   release_command = '/app/bin/migrate'
 
 [env]
-  PHX_HOST = 'done-manager.fly.dev'
+  PHX_HOST = 'donemanager.com'
   PORT = '8080'
 
 [http_service]
