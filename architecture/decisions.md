@@ -2,6 +2,10 @@
 
 Informal running log of choices and why. Newest first.
 
+## UI: stock Phoenix generator conventions, no custom design
+
+Use the `mix phx.gen.*` HTML/LiveView output and `core_components` as-is — default layout, tables, forms, flash. No bespoke styling or design system. Custom design is wasted effort for a few-family internal tool, and staying on generator conventions keeps the app legible to the generators and to LLMs (the vibe-coding bet) and cuts upgrade churn. Revisit only if the app is ever productized.
+
 ## Scope carries current_household from day one
 
 The `Scope` holds a `current_household` from the first commit, even though the household-switcher UI is deferred and early users have one household. Retrofitting a tenant key into every query later is far-reaching and error-prone, and multi-household is plausible early (friends asking to be added) even if the app never grows past a few households.
@@ -33,6 +37,10 @@ Open, pending hands-on testing of NFC Tasks: whether the scanner's ack is the **
 ## Datetimes: `utc_datetime_usec` for instants, `Time` for wall-clock
 
 All instant columns use `utc_datetime_usec` (UTC), not `naive_datetime`: Ecto enforces `Etc/UTC` and errors on anything else, so a local time can't silently slip in — validation, not convention. `_usec` avoids truncating `DateTime.utc_now()`. Centralize via `config.exs` migration timestamp type plus a shared schema module's `timestamps_opts`, applied everywhere. Postgres column is `timestamptz`.
+
+Two layers, deliberately. The Ecto `:utc_datetime_usec` *schema type* enforces UTC in app code (its dump step rejects non-UTC), but that lives only in the BEAM — raw SQL, psql, or another writer bypasses it. The `timestamptz` *column* is the database-level guarantee: it stores an absolute instant (always UTC internally) and normalizes any writer's input by their session timezone, so a naive local time can't masquerade as UTC even when Ecto isn't in the path. Keeping both is belt-and-suspenders rather than band-aid-only.
+
+This needs an explicit override: Ecto's `:utc_datetime_usec` maps to `timestamp without time zone` by default (a historical mapping kept for backwards compatibility — changing it would silently alter every existing app's columns). So we set `migration_timestamps: [type: :timestamptz]` (and `:timestamptz` on any standalone instant column like `household_invitations.expires_at`) while the schema field stays `:utc_datetime_usec`. Verify with `information_schema.columns` — instant columns should read `timestamp with time zone`; `schema_migrations` stays plain `timestamp` since Ecto owns it.
 
 Wall-clock time-of-day columns (`tasks.due_time`, `tasks.expiration_time`, `users.quiet_hours_start/end`) stay `Time` — they are not instants. They are interpreted in `households.timezone` when an occurrence is generated or a reminder is evaluated. ([Background](https://elixirforum.com/t/why-use-utc-datetime-over-naive-datetime-for-ecto/32532).)
 
