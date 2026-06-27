@@ -11,6 +11,10 @@ config :done_manager,
   ecto_repos: [DoneManager.Repo],
   generators: [timestamp_type: :utc_datetime_usec, binary_id: true]
 
+# IANA time zone data (pure Elixir, no runtime fetch) so UTC instants can be
+# rendered in a household's local wall-clock time. See architecture/decisions.md.
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 # UUIDv7 primary/foreign keys, and `timestamptz` columns for all migrations.
 # Schema fields stay `:utc_datetime_usec` so Ecto enforces UTC with microsecond
 # precision. See architecture/database.md and architecture/decisions.md.

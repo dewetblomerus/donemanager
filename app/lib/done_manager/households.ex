@@ -90,6 +90,16 @@ defmodule DoneManager.Households do
 
   def owner?(_scope), do: false
 
+  @doc "Whether the given user belongs to the scope's current household."
+  def member?(%Scope{household: %Household{id: household_id}}, user_id) do
+    Repo.exists?(
+      from m in HouseholdMembership,
+        where: m.user_id == ^user_id and m.household_id == ^household_id
+    )
+  end
+
+  def member?(_scope, _user_id), do: false
+
   ## Invitations
 
   @doc "Pending invitations for the scope's current household."

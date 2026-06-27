@@ -6,16 +6,16 @@ How occurrences are generated and reminders are sent.
 
 One Oban cron job runs every minute and derives all work from DB state — it does not process a delta. Each run:
 
-1. **Generate occurrences** for `SCHEDULED` tasks across a rolling horizon (e.g. today and tomorrow), skipping any that already exist.
+1. **Generate occurrences** for `scheduled` tasks across a rolling horizon (e.g. today and tomorrow), skipping any that already exist.
 2. **Send reminders**: for each occurrence that is due/overdue and not completed, and for each notify recipient, send a reminder when `now - last reminder_sent >= reminder_interval_minutes`. The Pushover sender reads the recipient's quiet hours and sets message priority (silent during quiet hours). Record a `reminder_sent` `task_event` and a `notification_deliveries` row. Exact quiet-hours behavior for reminders is an open question (see [decisions.md](decisions.md)).
 
 State lives in Postgres (`task_events`, `notification_deliveries`), not in the scheduler. A crash, restart, or skipped tick self-heals on the next run because work is recomputed from current state.
 
 ## What each task_type contributes
 
-- `SCHEDULED` — the only type the periodic generator creates occurrences for, from its wall-clock cadence.
-- `INTERVAL` — occurrences are not generated on a tick. The next one is rolled forward at *completion* (`due_at = last completed event + cadence_interval_minutes`). The loop only sends its reminders.
-- `ONE_OFF` — occurrences are created on scan by a `TOGGLE_TIMER` command (`due_at = now + config.delay_minutes`). The loop only sends its reminders.
+- `scheduled` — the only type the periodic generator creates occurrences for, from its wall-clock cadence.
+- `interval` — occurrences are not generated on a tick. The next one is rolled forward at *completion* (`due_at = last completed event + cadence_interval_minutes`). The loop only sends its reminders.
+- `timer` — occurrences are created on scan by the derived `toggle_timer` behaviour (`due_at = now + tasks.timer_minutes`). The loop only sends its reminders.
 
 ## Exactly-once
 

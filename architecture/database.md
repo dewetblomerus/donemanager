@@ -16,6 +16,7 @@ erDiagram
     users ||--o{ pushover_destinations : owns
     households ||--o{ tasks : owns
     households ||--o{ nfc_tags : owns
+    users ||--o{ nfc_tags : last_scanned_by
     households ||--o{ automation_commands : owns
     tasks ||--o{ automation_commands : receives
     nfc_tags ||--o{ automation_commands : invokes
@@ -104,6 +105,7 @@ erDiagram
         integer cadence_interval_minutes
         time due_time
         time expiration_time
+        integer timer_minutes
         integer reminder_interval_minutes
         boolean active
         datetime inserted_at
@@ -122,6 +124,7 @@ erDiagram
     nfc_tags {
         uuid id PK
         uuid household_id FK
+        uuid last_scanned_by_id FK
         string label
         string external_id
         boolean active
@@ -136,8 +139,6 @@ erDiagram
         uuid task_id FK
         uuid nfc_tag_id FK
         string label
-        string command_type
-        json config
         boolean active
         datetime inserted_at
         datetime updated_at
@@ -192,10 +193,11 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - Only users with an `owner` household membership can create integration bearer tokens for that household.
 - `pushover_destinations` is intentionally Pushover-specific. If other notification integrations are added later, they can get their own tables first.
 - `tasks` stores the task definition, behavior type, and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
-- `task_type` is the occurrence-generation strategy, the switch the generator branches on. V1 values: `SCHEDULED` (pre-generated per date from a wall-clock cadence), `INTERVAL` (rolled forward at completion, anchored to the last `completed` event), and `ONE_OFF` (created on scan by a command such as a laundry timer). Each type owns its own columns: `SCHEDULED` uses `cadence_frequency`, `cadence_weekdays`, `due_time`, `expiration_time`; `INTERVAL` uses `cadence_interval_minutes`; `ONE_OFF` carries its delay in the command's `config`.
-- For `SCHEDULED` tasks, cadence uses normalized columns that intentionally mirror a small iCalendar RRULE subset. `cadence_frequency` uses uppercase constants `DAILY` or `WEEKLY` (null for `INTERVAL` and `ONE_OFF`). `cadence_weekdays` uses uppercase iCalendar weekday tokens such as `MO`, `TU`, `WE`, `TH`, `FR`, `SA`, and `SU`.
-- For V1, `cadence_weekdays` should be empty for `DAILY` tasks and non-empty for `WEEKLY` tasks. Future recurrence complexity can grow from this shape with columns such as `cadence_interval`, `cadence_monthdays`, `cadence_until`, or `cadence_count`.
-- `INTERVAL` (floating) tasks are due relative to their last completion, not a calendar slot, so `cadence_frequency` is null. `cadence_interval_minutes` is the gap, e.g. `180` for a 3-hour "let the dog out" task or `2880` for a 48-hour "empty the robot mop" task. The next occurrence's `due_at` is the latest `completed` `task_event` plus the interval; a scan at any time records a `completed` event and rolls the clock forward, so doing it early pushes the next due-time out. `ATTEMPT_COMPLETION` on an `INTERVAL` task always records `completed` and resets — there is no per-date duplicate state. `cadence_interval_minutes` is distinct from the RRULE-style `cadence_interval` mentioned above, which would mean "every N periods" for a future `SCHEDULED` cadence.
+- `task_type` is the occurrence-generation strategy, the switch the generator branches on. V1 values: `scheduled` (pre-generated per date from a wall-clock cadence), `interval` (rolled forward at completion, anchored to the last `completed` event), and `timer` (an on-demand countdown started by a tap, such as a laundry timer). Each type owns its own columns: `scheduled` uses `cadence_frequency`, `cadence_weekdays`, `due_time`, `expiration_time`; `interval` uses `cadence_interval_minutes`; `timer` uses `timer_minutes`.
+- Enum-like string columns (`task_type`, `event_type`, `source`, `status`, `role`, cadence values) are stored lowercase snake_case for schema-wide consistency. The cadence columns take *structural* inspiration from the iCalendar RRULE subset so the schema can grow without repainting — not its literal token casing. If real iCal is ever emitted or parsed, casing is applied at that boundary.
+- For `scheduled` tasks, cadence uses normalized columns that mirror a small iCalendar RRULE subset in shape. `cadence_frequency` is `daily` or `weekly` (null for `interval` and `timer`). `cadence_weekdays` uses lowercase iCalendar-style weekday tokens `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`.
+- For V1, `cadence_weekdays` should be empty for `daily` tasks and non-empty for `weekly` tasks. Future recurrence complexity can grow from this shape with columns such as `cadence_interval`, `cadence_monthdays`, `cadence_until`, or `cadence_count`.
+- `interval` (floating) tasks are due relative to their last completion, not a calendar slot, so `cadence_frequency` is null. `cadence_interval_minutes` is the gap, e.g. `180` for a 3-hour "let the dog out" task or `2880` for a 48-hour "empty the robot mop" task. The next occurrence's `due_at` is the latest `completed` `task_event` plus the interval; a scan at any time records a `completed` event and rolls the clock forward, so doing it early pushes the next due-time out. `attempt_completion` on an `interval` task always records `completed` and resets — there is no per-date duplicate state. `cadence_interval_minutes` is distinct from the RRULE-style `cadence_interval` mentioned above, which would mean "every N periods" for a future `scheduled` cadence.
 - `tasks.reminder_interval_minutes` (nullable) controls re-notification of an overdue occurrence: the backend keeps sending reminders at this cadence — each recorded as a `reminder_sent` `task_event` — until the occurrence is completed. Whether reminders fire during a recipient's quiet hours is an open question (see [decisions.md](decisions.md)). Null means a single reminder.
 - `tasks.due_time` and nullable `tasks.expiration_time` are `Time` values — household-local times of day, not instants. If `expiration_time` is blank, generated occurrences do not expire by cutoff.
 - `task_occurrences` stores each concrete expected instance, such as `Spot breakfast for 2026-06-25`. `due_at` is when the task is due, and nullable `expires_at` is the concrete cutoff after which the occurrence should no longer be treated as the current actionable occurrence. Both are UTC instants (`utc_datetime_usec`), resolved from the task's wall-clock `due_time`/`expiration_time` in `households.timezone` at generation time.
@@ -203,11 +205,11 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `task_occurrences` should not store status. Status is derived from related `task_events`.
 - `nfc_tags` represents physical or integration inputs owned by a household, not tasks. The NFC action sends an opaque `external_id` with an integration bearer token; the backend resolves that input to a configured command. See [API](api.md) for the scan contract.
 - `nfc_tags.external_id` is a client-generated UUIDv7 written onto the tag, unique per household via an index on (`household_id`, `external_id`). The first scan of an unknown id provisions the tag (find-or-create, active and unassigned), so a user can scan a fresh tag and then assign it in the web UI. UUIDv7 keeps the upsert collision-safe; human naming lives in `label`.
-- `nfc_tags.last_scanned_at` records the most recent scan, including scans of unassigned tags that produce no `task_event`.
-- `automation_commands` maps an input to task-specific intent. `label` is the UI/admin name for the configured command, such as `Dog food bin scan` or `Washer timer`. V1 command types can start with `ATTEMPT_COMPLETION` and `TOGGLE_TIMER`.
-- `ATTEMPT_COMPLETION` is state-dependent. If the current occurrence is incomplete, the command can produce a `completed` event. If it was already completed, it should not undo the task; it can produce a `duplicate_completion_attempted` event and notify the scanner.
-- `TOGGLE_TIMER` is state-dependent. If no timer occurrence is active, the command can create a delayed occurrence and produce a `timer_started` event. If the timer is already active, it can cancel that occurrence and produce a `timer_cancelled` event.
-- `automation_commands.config` stores command-specific settings, such as `{ "delay_minutes": 60 }` for a laundry timer.
+- `nfc_tags.last_scanned_at` records the most recent scan, including scans of unassigned tags that produce no `task_event`. `nfc_tags.last_scanned_by_id` records who that scan was attributed to (the token's `user_id`, null for a shared-device token). It is a denormalized "who last touched this tag" pointer that lives on the tag precisely because an unassigned-tag scan writes no `task_event` to derive it from; "who completed a chore" remains derived from `task_events`.
+- `automation_commands` links a tag to a task — one active link per tag, so a scan resolves unambiguously. `label` is the UI/admin name for the link, such as `Dog food bin scan` or `Washer timer`. What a scan *does* is **derived from the linked task's `task_type` at scan time**, not stored on the link, so editing a task's type can never leave a stale command behind. The two V1 scan behaviors are `attempt_completion` (for `scheduled`/`interval` tasks) and `toggle_timer` (for `timer` tasks).
+- `attempt_completion` is state-dependent. If the current occurrence is incomplete, it produces a `completed` event. If it was already completed, it does not undo the task; it produces a `duplicate_completion_attempted` event and notifies the scanner.
+- `toggle_timer` is state-dependent. If no timer occurrence is active, it creates a delayed occurrence (`due_at = now + tasks.timer_minutes`) and produces a `timer_started` event. If the timer is already active, it cancels that occurrence and produces a `timer_cancelled` event.
+- `tasks.timer_minutes` (nullable, required for `timer` tasks) is the countdown length, e.g. `60` for a laundry move. It lives on the task — a user setting up "Laundry timer" expects to name the duration there — not on the link, so the tag binding stays a pure trigger.
 - `task_events.event_type` can represent outcomes such as `completed`, `duplicate_completion_attempted`, `timer_started`, `timer_cancelled`, `acknowledged`, `reminder_sent`, or `skipped`.
 - `task_events.source` can represent whether the event came from `nfc`, `web`, or a system process.
 - Acknowledgements are task events, not a separate table.

@@ -24,7 +24,7 @@ Tables (on top of stage 1):
 5. `integration_bearer_tokens` (households, users) — authenticates the scan
 6. `tasks` (households)
 7. `nfc_tags` (households)
-8. `automation_commands` (households, tasks, nfc_tags) — `command_type` `ATTEMPT_COMPLETION`
+8. `automation_commands` (households, tasks, nfc_tags) — links a tag to a task; the scan behaviour is derived from the task's type (`attempt_completion` here)
 9. `task_occurrences` (tasks)
 10. `task_events` (task_occurrences, users, nfc_tags, automation_commands, integration_bearer_tokens)
 
@@ -39,5 +39,5 @@ Testable outcome: a request to the scan endpoint with a valid token completes th
 
 - Notifications: `pushover_destinations`, `notification_deliveries`, and async/best-effort write path (see [decisions.md](decisions.md) latency note).
 - Scheduling: the Oban reconcile loop for occurrence generation and reminders (see [scheduling.md](scheduling.md)). Until then, occurrences are created eagerly.
-- `SCHEDULED` and `INTERVAL` task types: the slice uses one task with an eagerly-created occurrence; recurrence comes with the reconcile loop.
+- `scheduled` and `interval` task types: the slice uses one task with an eagerly-created occurrence; recurrence comes with the reconcile loop.
 - Token management UI and `integration_bearer_tokens.last_used_at`.

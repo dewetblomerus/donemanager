@@ -1,6 +1,7 @@
 defmodule DoneManagerWeb.Router do
   use DoneManagerWeb, :router
 
+  import DoneManagerWeb.ApiAuth
   import DoneManagerWeb.UserAuth
 
   pipeline :browser do
@@ -40,13 +41,21 @@ defmodule DoneManagerWeb.Router do
       live "/households/new", HouseholdLive.Form, :new
       live "/households/:id", HouseholdLive.Show, :show
       live "/invitations", InvitationLive.Index, :index
+      live "/households/:id/tasks", TaskLive.Index, :index
+      live "/households/:id/tasks/new", TaskLive.Form, :new
+      live "/tasks/:id", TaskLive.Show, :show
+      live "/tasks/:id/edit", TaskLive.Form, :edit
+      live "/households/:id/tags", TagLive.Index, :index
+      live "/households/:id/tokens", TokenLive.Index, :index
     end
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", DoneManagerWeb do
-  #   pipe_through :api
-  # end
+  # Integration API. NFC tags bake in these paths — see architecture/api.md.
+  scope "/v1", DoneManagerWeb do
+    pipe_through [:api, :require_bearer_token]
+
+    post "/tags/:external_id/scans", ScanController, :create
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:done_manager, :dev_routes) do
