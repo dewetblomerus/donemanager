@@ -8,7 +8,6 @@ defmodule DoneManager.Repo.Migrations.CreateAutomationCommands do
       add :nfc_tag_id, references(:nfc_tags, type: :uuid, on_delete: :delete_all), null: false
       add :label, :string
       add :command_type, :string, null: false
-      add :config, :map, null: false, default: %{}
       add :active, :boolean, null: false, default: true
 
       timestamps()

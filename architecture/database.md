@@ -140,7 +140,6 @@ erDiagram
         uuid nfc_tag_id FK
         string label
         string command_type
-        json config
         boolean active
         datetime inserted_at
         datetime updated_at
@@ -212,7 +211,6 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `attempt_completion` is state-dependent. If the current occurrence is incomplete, the command can produce a `completed` event. If it was already completed, it should not undo the task; it can produce a `duplicate_completion_attempted` event and notify the scanner.
 - `toggle_timer` is state-dependent. If no timer occurrence is active, the command creates a delayed occurrence (`due_at = now + tasks.timer_minutes`) and produces a `timer_started` event. If the timer is already active, it cancels that occurrence and produces a `timer_cancelled` event.
 - `tasks.timer_minutes` (nullable, required for `one_off`) is the countdown length for an on-demand timer, e.g. `60` for a laundry move. It lives on the task — a user setting up "Laundry timer" expects to name the duration there — not on the command, so the tag binding stays a pure trigger.
-- `automation_commands.config` stores command-specific settings as a JSON map. It is unused by V1's command types (the timer duration lives on the task); it exists for future command parameters.
 - `task_events.event_type` can represent outcomes such as `completed`, `duplicate_completion_attempted`, `timer_started`, `timer_cancelled`, `acknowledged`, `reminder_sent`, or `skipped`.
 - `task_events.source` can represent whether the event came from `nfc`, `web`, or a system process.
 - Acknowledgements are task events, not a separate table.

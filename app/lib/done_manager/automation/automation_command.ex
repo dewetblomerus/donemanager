@@ -17,7 +17,6 @@ defmodule DoneManager.Automation.AutomationCommand do
   schema "automation_commands" do
     field :label, :string
     field :command_type, :string
-    field :config, :map, default: %{}
     field :active, :boolean, default: true
 
     belongs_to :household, Household
@@ -30,7 +29,7 @@ defmodule DoneManager.Automation.AutomationCommand do
   @doc false
   def changeset(command, attrs) do
     command
-    |> cast(attrs, [:label, :command_type, :config, :active])
+    |> cast(attrs, [:label, :command_type, :active])
     |> validate_required([:command_type])
     |> validate_inclusion(:command_type, @command_types)
     |> unique_constraint(:nfc_tag_id,

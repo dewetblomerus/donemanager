@@ -15,7 +15,7 @@ State lives in Postgres (`task_events`, `notification_deliveries`), not in the s
 
 - `scheduled` — the only type the periodic generator creates occurrences for, from its wall-clock cadence.
 - `interval` — occurrences are not generated on a tick. The next one is rolled forward at *completion* (`due_at = last completed event + cadence_interval_minutes`). The loop only sends its reminders.
-- `one_off` — occurrences are created on scan by a `toggle_timer` command (`due_at = now + config.delay_minutes`). The loop only sends its reminders.
+- `one_off` — occurrences are created on scan by a `toggle_timer` command (`due_at = now + tasks.timer_minutes`). The loop only sends its reminders.
 
 ## Exactly-once
 
