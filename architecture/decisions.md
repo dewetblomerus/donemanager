@@ -2,6 +2,16 @@
 
 Informal running log of choices and why. Newest first.
 
+## Multitenancy: Phoenix Scopes
+
+Use Phoenix 1.8 [Scopes](https://phoenix.hexdocs.pm/scopes.html) for household isolation. Auth is Auth0 via Ueberauth, so we never run `mix phx.gen.auth` (it scaffolds Phoenix's own password auth). Scopes don't need it: define the `Scope` module by hand, configure `config :phoenix, :scopes` with `schema_key: household_id`, and build the scope from the Auth0 session (`users.auth0_sub` → user → household) in a plug / `on_mount` that assigns `:current_scope`. The context and LiveView generators then thread it. Scopes are a mandatory first argument to every data function (`list_tasks(scope)`, `get_task!(scope, id)`), which makes cross-household access structurally impossible rather than something to remember per query — directly addressing OWASP broken-access-control. This is the guardrail that makes skipping Ash safe. Back it with a couple of cross-household isolation tests early.
+
+## No Ash framework
+
+Plain Phoenix contexts + generators, not Ash. The project is vibe-coded without carefully reading the code, so it depends on the generator being reliably correct — and vanilla Phoenix/Ecto is far more densely represented in LLM training data than Ash's fast-moving DSL. When generated code breaks, plain Elixir is readable top-to-bottom; Ash failures are framework-magic failures that require deep DSL knowledge to debug, which conflicts with not reading code. Ash also adds a large coupled dependency cluster, cutting against the upgrade-churn goal behind the Phoenix + LiveView choice.
+
+Ash's free GraphQL/JSON:API is real but discounted: productizing + mobile is ~20% likely, a JSON API is cheap to add to plain Phoenix later, and NFC ingestion is already a hand-written JSON endpoint. Its strongest fit — declarative multitenancy — is covered by Phoenix Scopes instead. Would flip if productizing were >50% likely, since retrofitting Ash later is a real rewrite.
+
 ## Stack: Phoenix + LiveView
 
 Chosen for lowest long-term maintenance as a solo, low-attention project meant to run for years with a few families using it. The dominant cost over that horizon is package upgrades, and LiveView minimizes it:
