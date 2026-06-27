@@ -44,6 +44,7 @@ defmodule DoneManagerWeb.Router do
       live "/households/:id/tasks", TaskLive.Index, :index
       live "/households/:id/tasks/new", TaskLive.Form, :new
       live "/tasks/:id", TaskLive.Show, :show
+      live "/tasks/:id/edit", TaskLive.Form, :edit
     end
   end
 

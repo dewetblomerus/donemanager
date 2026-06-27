@@ -96,6 +96,27 @@ defmodule DoneManager.TasksTest do
     end
   end
 
+  describe "update_task/3" do
+    test "updates a task in the scope's household" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      assert {:ok, updated} =
+               Tasks.update_task(scope, task, %{"name" => "Spot dinner", "due_time" => "18:00"})
+
+      assert updated.name == "Spot dinner"
+      assert updated.due_time == ~T[18:00:00]
+    end
+
+    test "rejects updating a task from another household" do
+      owner = owner_scope_fixture()
+      task = task_fixture(owner)
+      other = owner_scope_fixture()
+
+      assert {:error, :unauthorized} = Tasks.update_task(other, task, %{"name" => "Hijack"})
+    end
+  end
+
   describe "household isolation (default-deny)" do
     test "list_tasks only returns the scope household's tasks" do
       owner = owner_scope_fixture()

@@ -68,6 +68,15 @@ defmodule DoneManager.Tasks do
     end)
   end
 
+  @doc "Updates a task. The task must already have been loaded through a scope."
+  def update_task(%Scope{household: %Household{id: household_id}}, %Task{} = task, attrs) do
+    if task.household_id == household_id do
+      task |> Task.changeset(attrs) |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   def change_task(%Task{} = task \\ %Task{}, attrs \\ %{}), do: Task.changeset(task, attrs)
 
   ## Occurrences

@@ -14,6 +14,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
         {@task.name}
         <:subtitle>{@task.description}</:subtitle>
         <:actions>
+          <.button variant="primary" navigate={~p"/tasks/#{@task}/edit"}>Edit</.button>
           <.button navigate={~p"/households/#{@household}/tasks"}>Back</.button>
         </:actions>
       </.header>

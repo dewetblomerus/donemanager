@@ -26,7 +26,7 @@ defmodule DoneManagerWeb.TaskLive.Form do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>New task in {@household.name}</.header>
+      <.header>{@page_title}</.header>
 
       <.form for={@form} id="task-form" phx-change="validate" phx-submit="save">
         <.input
@@ -82,7 +82,7 @@ defmodule DoneManagerWeb.TaskLive.Form do
 
         <footer class="mt-4 flex gap-2">
           <.button variant="primary" phx-disable-with="Saving...">Save task</.button>
-          <.button navigate={~p"/households/#{@household}/tasks"}>Cancel</.button>
+          <.button navigate={@cancel_path}>Cancel</.button>
         </footer>
       </.form>
     </Layouts.app>
@@ -90,25 +90,52 @@ defmodule DoneManagerWeb.TaskLive.Form do
   end
 
   @impl true
-  def mount(%{"id" => household_id}, _session, socket) do
+  def mount(params, _session, socket) do
+    socket =
+      socket
+      |> assign(:type_options, @type_options)
+      |> assign(:frequency_options, @frequency_options)
+      |> assign(:weekday_options, @weekday_options)
+
+    {:ok, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  # New: the URL carries the household; start from a blank task.
+  defp apply_action(socket, :new, %{"id" => household_id}) do
     household = Households.get_household!(socket.assigns.current_scope, household_id)
     scope = Scope.put_household(socket.assigns.current_scope, household)
 
-    {:ok,
-     socket
-     |> assign(:current_scope, scope)
-     |> assign(:household, household)
-     |> assign(:type_options, @type_options)
-     |> assign(:frequency_options, @frequency_options)
-     |> assign(:weekday_options, @weekday_options)
-     |> assign(:task_type, nil)
-     |> assign(:frequency, nil)
-     |> assign(:form, to_form(Tasks.change_task()))}
+    socket
+    |> assign(:current_scope, scope)
+    |> assign(:household, household)
+    |> assign(:task, %Task{})
+    |> assign(:page_title, "New task in #{household.name}")
+    |> assign(:cancel_path, ~p"/households/#{household}/tasks")
+    |> assign(:task_type, nil)
+    |> assign(:frequency, nil)
+    |> assign(:form, to_form(Tasks.change_task()))
+  end
+
+  # Edit: the URL carries the task id; resolve its household from it.
+  defp apply_action(socket, :edit, %{"id" => task_id}) do
+    task = Tasks.get_task!(socket.assigns.current_scope, task_id)
+    household = Households.get_household!(socket.assigns.current_scope, task.household_id)
+    scope = Scope.put_household(socket.assigns.current_scope, household)
+
+    socket
+    |> assign(:current_scope, scope)
+    |> assign(:household, household)
+    |> assign(:task, task)
+    |> assign(:page_title, "Edit #{task.name}")
+    |> assign(:cancel_path, ~p"/tasks/#{task}")
+    |> assign(:task_type, task.task_type)
+    |> assign(:frequency, task.cadence_frequency)
+    |> assign(:form, to_form(Tasks.change_task(task)))
   end
 
   @impl true
   def handle_event("validate", %{"task" => params}, socket) do
-    changeset = Tasks.change_task(%Task{}, params)
+    changeset = Tasks.change_task(socket.assigns.task, params)
 
     {:noreply,
      socket
@@ -118,6 +145,10 @@ defmodule DoneManagerWeb.TaskLive.Form do
   end
 
   def handle_event("save", %{"task" => params}, socket) do
+    save_task(socket, socket.assigns.live_action, params)
+  end
+
+  defp save_task(socket, :new, params) do
     case Tasks.create_task(socket.assigns.current_scope, params) do
       {:ok, task} ->
         {:noreply,
@@ -127,6 +158,19 @@ defmodule DoneManagerWeb.TaskLive.Form do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset, action: :insert))}
+    end
+  end
+
+  defp save_task(socket, :edit, params) do
+    case Tasks.update_task(socket.assigns.current_scope, socket.assigns.task, params) do
+      {:ok, task} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Task updated.")
+         |> push_navigate(to: ~p"/tasks/#{task}")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :form, to_form(changeset, action: :update))}
     end
   end
 end
