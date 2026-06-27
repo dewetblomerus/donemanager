@@ -2,6 +2,12 @@
 
 Informal running log of choices and why. Newest first.
 
+## Datetimes: `utc_datetime_usec` for instants, `Time` for wall-clock
+
+All instant columns use `utc_datetime_usec` (UTC), not `naive_datetime`: Ecto enforces `Etc/UTC` and errors on anything else, so a local time can't silently slip in — validation, not convention. `_usec` avoids truncating `DateTime.utc_now()`. Centralize via `config.exs` migration timestamp type plus a shared schema module's `timestamps_opts`, applied everywhere. Postgres column is `timestamptz`.
+
+Wall-clock time-of-day columns (`tasks.due_time`, `tasks.expiration_time`, `users.quiet_hours_start/end`) stay `Time` — they are not instants. They are interpreted in `households.timezone` when an occurrence is generated or a reminder is evaluated. ([Background](https://elixirforum.com/t/why-use-utc-datetime-over-naive-datetime-for-ecto/32532).)
+
 ## API host domain: deferred
 
 The `{api_host}` baked into NFC tags (see [api.md](api.md)) is decided when the domain name is bought. It will be a dedicated API subdomain so the web UI can move without rewriting tags. No tags get written until it's chosen.

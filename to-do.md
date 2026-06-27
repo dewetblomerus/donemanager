@@ -1,1 +1,1 @@
-- Look up the guidance around Ecto datetime from the cars_platform PR template.
+- Audit what we have and decide if we have everything needed to start coding
