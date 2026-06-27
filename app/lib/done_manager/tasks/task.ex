@@ -2,9 +2,12 @@ defmodule DoneManager.Tasks.Task do
   @moduledoc """
   A household chore definition: its name, behavior `task_type`, and cadence.
 
+  `task_type` has no default — a creator must choose one deliberately, since the
+  type decides which cadence fields apply. Validation is conditional on the
+  chosen type, mirroring the per-type column ownership in architecture/database.md.
+
   In the Stage 2 slice a task is created with one eagerly-generated occurrence;
   recurrence generation (`scheduled`/`interval`) arrives with the reconcile loop.
-  See architecture/database.md and architecture/stages.md.
   """
 
   use DoneManager.Schema
@@ -14,11 +17,13 @@ defmodule DoneManager.Tasks.Task do
   alias DoneManager.Tasks.TaskOccurrence
 
   @task_types ~w(scheduled interval one_off)
+  @frequencies ~w(daily weekly)
+  @weekdays ~w(mo tu we th fr sa su)
 
   schema "tasks" do
     field :name, :string
     field :description, :string
-    field :task_type, :string, default: "scheduled"
+    field :task_type, :string
     field :cadence_frequency, :string
     field :cadence_weekdays, {:array, :string}, default: []
     field :cadence_interval_minutes, :integer
@@ -36,7 +41,7 @@ defmodule DoneManager.Tasks.Task do
   @doc false
   def changeset(task, attrs) do
     task
-    |> cast(attrs, [
+    |> cast(normalize_times(attrs), [
       :name,
       :description,
       :task_type,
@@ -50,7 +55,75 @@ defmodule DoneManager.Tasks.Task do
     ])
     |> validate_required([:name, :task_type])
     |> validate_inclusion(:task_type, @task_types)
+    |> validate_number(:cadence_interval_minutes, greater_than: 0)
+    |> validate_number(:reminder_interval_minutes, greater_than: 0)
+    |> validate_by_type()
   end
 
+  # Each type owns its own cadence columns (see architecture/database.md). Clear
+  # the fields that don't apply, then require the ones that do, so a stored task
+  # can't carry contradictory cadence for its type.
+  defp validate_by_type(changeset) do
+    case get_field(changeset, :task_type) do
+      "scheduled" ->
+        changeset
+        |> clear_fields([:cadence_interval_minutes])
+        |> validate_required([:cadence_frequency, :due_time])
+        |> validate_inclusion(:cadence_frequency, @frequencies)
+        |> validate_subset(:cadence_weekdays, @weekdays)
+        |> validate_weekdays()
+
+      "interval" ->
+        changeset
+        |> clear_fields([:cadence_frequency, :due_time, :expiration_time])
+        |> put_change(:cadence_weekdays, [])
+        |> validate_required([:cadence_interval_minutes])
+
+      "one_off" ->
+        changeset
+        |> clear_fields([
+          :cadence_frequency,
+          :cadence_interval_minutes,
+          :due_time,
+          :expiration_time
+        ])
+        |> put_change(:cadence_weekdays, [])
+
+      _ ->
+        changeset
+    end
+  end
+
+  # Weekly needs at least one weekday; daily must have none.
+  defp validate_weekdays(changeset) do
+    case {get_field(changeset, :cadence_frequency), get_field(changeset, :cadence_weekdays)} do
+      {"weekly", []} ->
+        add_error(changeset, :cadence_weekdays, "pick at least one day for a weekly task")
+
+      {"daily", days} when days != [] ->
+        put_change(changeset, :cadence_weekdays, [])
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp clear_fields(changeset, fields),
+    do: Enum.reduce(fields, changeset, &put_change(&2, &1, nil))
+
+  # HTML <input type="time"> submits "HH:MM"; Ecto's :time cast wants seconds.
+  defp normalize_times(attrs) when is_map(attrs) do
+    Enum.reduce(["due_time", "expiration_time"], attrs, fn key, acc ->
+      case Map.get(acc, key) do
+        <<h::binary-size(2), ":", m::binary-size(2)>> -> Map.put(acc, key, "#{h}:#{m}:00")
+        _ -> acc
+      end
+    end)
+  end
+
+  defp normalize_times(attrs), do: attrs
+
   def task_types, do: @task_types
+  def frequencies, do: @frequencies
+  def weekdays, do: @weekdays
 end

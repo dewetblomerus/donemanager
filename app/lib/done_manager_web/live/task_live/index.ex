@@ -27,6 +27,7 @@ defmodule DoneManagerWeb.TaskLive.Index do
         row_click={fn task -> JS.navigate(~p"/tasks/#{task}") end}
       >
         <:col :let={task} label="Name">{task.name}</:col>
+        <:col :let={task} label="Type">{task.task_type}</:col>
         <:col :let={task} label="Status">{task.status}</:col>
       </.table>
 

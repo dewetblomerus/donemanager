@@ -27,6 +27,23 @@ defmodule DoneManagerWeb.TaskLive.Show do
         </span>
       </div>
 
+      <.list>
+        <:item title="Type">{@task.task_type}</:item>
+        <:item :if={@task.cadence_frequency} title="Frequency">{@task.cadence_frequency}</:item>
+        <:item :if={@task.cadence_weekdays != []} title="Weekdays">
+          {Enum.join(@task.cadence_weekdays, ", ")}
+        </:item>
+        <:item :if={@task.cadence_interval_minutes} title="Every">
+          {@task.cadence_interval_minutes} min
+        </:item>
+        <:item :if={@task.due_time} title="Due time">{@task.due_time}</:item>
+        <:item :if={@task.expiration_time} title="Expires">{@task.expiration_time}</:item>
+        <:item :if={@task.reminder_interval_minutes} title="Reminder every">
+          {@task.reminder_interval_minutes} min
+        </:item>
+        <:item title="Active">{@task.active}</:item>
+      </.list>
+
       <.header>Assigned tags</.header>
       <.table id="commands" rows={@commands}>
         <:col :let={command} label="Tag">{command.nfc_tag.label || command.nfc_tag.external_id}</:col>
