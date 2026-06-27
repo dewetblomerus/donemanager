@@ -1,0 +1,17 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  elixir-ci:
+    name: Elixir CI
+    uses: dewetblomerus/actions-elixir/.github/workflows/elixir-ci.yml@main
+    with:
+      working-directory: app

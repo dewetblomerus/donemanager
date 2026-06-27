@@ -1,1 +1,2 @@
 - Audit what we have and decide if we have everything needed to start coding
+- Add a Content-Security-Policy to the browser pipeline (Sobelow Config.CSP, currently ignored) — needs browser testing

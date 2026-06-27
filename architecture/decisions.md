@@ -20,7 +20,9 @@ The V1 model already enables this with no table/column changes: `notification_de
 
 ## App structure: single Phoenix monolith in a monorepo
 
-One Phoenix app, 100% monolith — no umbrella. Less ceremony for a solo, low-maintenance project. The repo stays a monorepo so future sibling directories can live alongside the app: `architecture/`, `terraform/`, `marketing-site`/`website`, `android-app`, `ios-app`. "Monorepo" means one repo for these pieces, not an Elixir umbrella.
+One Phoenix app, 100% monolith — no umbrella. Less ceremony for a solo, low-maintenance project. The mix project lives in `app/`. The repo stays a monorepo so future sibling directories can live alongside it: `architecture/`, `terraform/`, `marketing-site`/`website`, `android-app`, `ios-app`. "Monorepo" means one repo for these pieces, not an Elixir umbrella.
+
+CI runs `mix check` (ex_check) via the shared [dewetblomerus/actions-elixir](https://github.com/dewetblomerus/actions-elixir) reusable workflow with `working-directory: app`. The check policy (Credo, Sobelow, format, warnings-as-errors, unused deps, tests) lives in `app/mix.exs` + `app/.check.exs`; `mix_audit` is a separate informational check. Sobelow's `Config.CSP` finding is ignored for now — adding a Content-Security-Policy is a deferred hardening step that needs browser testing.
 
 ## Scan feedback latency is a priority
 

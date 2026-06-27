@@ -23,6 +23,20 @@ A central backend coordinates routine tasks for the household.
 - Let one person acknowledge a task so everyone knows it is handled.
 - If someone missed a notification, scanning the NFC tag before acting can immediately show that the task was already done, when, and by whom.
 
+## Layout
+
+This is a monorepo. The Phoenix application lives in `app/` (a single monolith — see [decisions](architecture/decisions.md)). Other top-level directories are reserved for future siblings such as `terraform/`, a marketing site, and native apps.
+
+```
+app/            Phoenix monolith (mix project)
+architecture/   design docs
+.github/        shared CI (calls dewetblomerus/actions-elixir)
+```
+
 ## Architecture
 
 See [architecture/README.md](architecture/README.md) for the high-level system diagram and current architecture notes.
+
+## CI
+
+GitHub Actions runs `mix check` via the shared [dewetblomerus/actions-elixir](https://github.com/dewetblomerus/actions-elixir) reusable workflow, pointed at `app/`. The check suite (compile-warnings-as-errors, formatter, Credo, Sobelow, unused deps, tests) is defined locally in `app/mix.exs` + `app/.check.exs`; `mix_audit` runs as a separate informational check. Run it locally with `cd app && mix check`.
