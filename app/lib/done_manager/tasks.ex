@@ -12,7 +12,9 @@ defmodule DoneManager.Tasks do
   import Ecto.Query, warn: false
 
   alias DoneManager.Accounts.Scope
+  alias DoneManager.Accounts.User
   alias DoneManager.Households.Household
+  alias DoneManager.Households.HouseholdMembership
   alias DoneManager.Repo
   alias DoneManager.Tasks.Task
   alias DoneManager.Tasks.TaskEvent
@@ -26,9 +28,19 @@ defmodule DoneManager.Tasks do
     |> Repo.all()
   end
 
-  @doc "Fetches a task in the scope's current household, or raises (default-deny)."
-  def get_task!(%Scope{household: %Household{id: household_id}}, id) do
-    Repo.get_by!(Task, id: id, household_id: household_id)
+  @doc """
+  Fetches a task by its (globally unique) id, but only if the scope's user is a
+  member of the task's household, or raises (default-deny). Keyed on membership
+  rather than the current household so a by-id route resolves the right
+  household regardless of which one is currently selected.
+  """
+  def get_task!(%Scope{user: %User{id: user_id}}, id) do
+    from(t in Task,
+      join: m in HouseholdMembership,
+      on: m.household_id == t.household_id,
+      where: t.id == ^id and m.user_id == ^user_id
+    )
+    |> Repo.one!()
   end
 
   @doc """

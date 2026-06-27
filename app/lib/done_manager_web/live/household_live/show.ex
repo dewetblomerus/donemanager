@@ -12,6 +12,7 @@ defmodule DoneManagerWeb.HouseholdLive.Show do
         {@household.name}
         <:subtitle>Timezone: {@household.timezone}</:subtitle>
         <:actions>
+          <.button variant="primary" navigate={~p"/households/#{@household}/tasks"}>Tasks</.button>
           <.button navigate={~p"/households"}>Back</.button>
         </:actions>
       </.header>

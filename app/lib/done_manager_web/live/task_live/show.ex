@@ -1,7 +1,9 @@
 defmodule DoneManagerWeb.TaskLive.Show do
   use DoneManagerWeb, :live_view
 
+  alias DoneManager.Accounts.Scope
   alias DoneManager.Automation
+  alias DoneManager.Households
   alias DoneManager.Tasks
 
   @impl true
@@ -12,7 +14,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
         {@task.name}
         <:subtitle>{@task.description}</:subtitle>
         <:actions>
-          <.button navigate={~p"/tasks"}>Back</.button>
+          <.button navigate={~p"/households/#{@household}/tasks"}>Back</.button>
         </:actions>
       </.header>
 
@@ -52,7 +54,15 @@ defmodule DoneManagerWeb.TaskLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     task = Tasks.get_task!(socket.assigns.current_scope, id)
-    {:ok, socket |> assign(:task, task) |> load(task)}
+    household = Households.get_household!(socket.assigns.current_scope, task.household_id)
+    scope = Scope.put_household(socket.assigns.current_scope, household)
+
+    {:ok,
+     socket
+     |> assign(:current_scope, scope)
+     |> assign(:task, task)
+     |> assign(:household, household)
+     |> load(task)}
   end
 
   @impl true

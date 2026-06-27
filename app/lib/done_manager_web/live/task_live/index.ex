@@ -1,6 +1,8 @@
 defmodule DoneManagerWeb.TaskLive.Index do
   use DoneManagerWeb, :live_view
 
+  alias DoneManager.Accounts.Scope
+  alias DoneManager.Households
   alias DoneManager.Tasks
 
   @impl true
@@ -8,9 +10,12 @@ defmodule DoneManagerWeb.TaskLive.Index do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
-        Tasks
+        Tasks in {@household.name}
+        <:subtitle>
+          <.link navigate={~p"/households/#{@household}"} class="link">Back to household</.link>
+        </:subtitle>
         <:actions>
-          <.button variant="primary" navigate={~p"/tasks/new"}>
+          <.button variant="primary" navigate={~p"/households/#{@household}/tasks/new"}>
             <.icon name="hero-plus" /> New task
           </.button>
         </:actions>
@@ -33,8 +38,15 @@ defmodule DoneManagerWeb.TaskLive.Index do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok, assign(socket, :tasks, load_tasks(socket.assigns.current_scope))}
+  def mount(%{"id" => household_id}, _session, socket) do
+    household = Households.get_household!(socket.assigns.current_scope, household_id)
+    scope = Scope.put_household(socket.assigns.current_scope, household)
+
+    {:ok,
+     socket
+     |> assign(:current_scope, scope)
+     |> assign(:household, household)
+     |> assign(:tasks, load_tasks(scope))}
   end
 
   defp load_tasks(scope) do
