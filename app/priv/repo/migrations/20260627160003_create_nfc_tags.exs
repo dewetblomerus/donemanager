@@ -8,6 +8,7 @@ defmodule DoneManager.Repo.Migrations.CreateNfcTags do
       add :external_id, :string, null: false
       add :active, :boolean, null: false, default: true
       add :last_scanned_at, :timestamptz
+      add :last_scanned_by_id, references(:users, type: :uuid, on_delete: :nilify_all)
 
       timestamps()
     end

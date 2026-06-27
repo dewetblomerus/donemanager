@@ -35,6 +35,12 @@ defmodule DoneManagerWeb.TagLive.Index do
           <p class="text-sm opacity-60">{tag.external_id}</p>
           <p class="text-sm opacity-60">
             Last scanned: {format_time(tag.last_scanned_at)}
+            <span :if={tag.last_scanned_at && tag.last_scanned_by}>
+              by {scanner_name(tag.last_scanned_by)}
+            </span>
+            <span :if={tag.last_scanned_at && is_nil(tag.last_scanned_by)}>
+              by a shared device
+            </span>
             <%= case assignment(tag) do %>
               <% nil -> %>
                 · <span class="opacity-80">unassigned</span>
@@ -123,6 +129,8 @@ defmodule DoneManagerWeb.TagLive.Index do
       task -> "#{base} It is assigned to \"#{task.name}\"; that assignment will be removed."
     end
   end
+
+  defp scanner_name(user), do: user.display_name || user.email
 
   defp format_time(nil), do: "never"
   defp format_time(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")

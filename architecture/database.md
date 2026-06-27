@@ -16,6 +16,7 @@ erDiagram
     users ||--o{ pushover_destinations : owns
     households ||--o{ tasks : owns
     households ||--o{ nfc_tags : owns
+    users ||--o{ nfc_tags : last_scanned_by
     households ||--o{ automation_commands : owns
     tasks ||--o{ automation_commands : receives
     nfc_tags ||--o{ automation_commands : invokes
@@ -122,6 +123,7 @@ erDiagram
     nfc_tags {
         uuid id PK
         uuid household_id FK
+        uuid last_scanned_by_id FK
         string label
         string external_id
         boolean active
@@ -204,7 +206,7 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `task_occurrences` should not store status. Status is derived from related `task_events`.
 - `nfc_tags` represents physical or integration inputs owned by a household, not tasks. The NFC action sends an opaque `external_id` with an integration bearer token; the backend resolves that input to a configured command. See [API](api.md) for the scan contract.
 - `nfc_tags.external_id` is a client-generated UUIDv7 written onto the tag, unique per household via an index on (`household_id`, `external_id`). The first scan of an unknown id provisions the tag (find-or-create, active and unassigned), so a user can scan a fresh tag and then assign it in the web UI. UUIDv7 keeps the upsert collision-safe; human naming lives in `label`.
-- `nfc_tags.last_scanned_at` records the most recent scan, including scans of unassigned tags that produce no `task_event`.
+- `nfc_tags.last_scanned_at` records the most recent scan, including scans of unassigned tags that produce no `task_event`. `nfc_tags.last_scanned_by_id` records who that scan was attributed to (the token's `user_id`, null for a shared-device token). It is a denormalized "who last touched this tag" pointer that lives on the tag precisely because an unassigned-tag scan writes no `task_event` to derive it from; "who completed a chore" remains derived from `task_events`.
 - `automation_commands` maps an input to task-specific intent. `label` is the UI/admin name for the configured command, such as `Dog food bin scan` or `Washer timer`. V1 command types can start with `attempt_completion` and `toggle_timer`.
 - `attempt_completion` is state-dependent. If the current occurrence is incomplete, the command can produce a `completed` event. If it was already completed, it should not undo the task; it can produce a `duplicate_completion_attempted` event and notify the scanner.
 - `toggle_timer` is state-dependent. If no timer occurrence is active, the command can create a delayed occurrence and produce a `timer_started` event. If the timer is already active, it can cancel that occurrence and produce a `timer_cancelled` event.

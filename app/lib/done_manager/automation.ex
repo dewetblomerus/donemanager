@@ -38,7 +38,7 @@ defmodule DoneManager.Automation do
     from(t in NfcTag,
       where: t.household_id == ^household_id,
       order_by: [desc: t.inserted_at],
-      preload: [automation_commands: ^active_commands]
+      preload: [:last_scanned_by, automation_commands: ^active_commands]
     )
     |> Repo.all()
   end
@@ -111,7 +111,7 @@ defmodule DoneManager.Automation do
   """
   def handle_scan(%BearerToken{household: %Household{id: household_id}} = token, external_id) do
     if valid_uuid?(external_id) do
-      {state, tag} = find_or_create_tag(household_id, external_id)
+      {state, tag} = find_or_create_tag(household_id, external_id, token.user_id)
       {:ok, resolve(state, tag, token)}
     else
       {:error, :malformed_external_id}
@@ -194,13 +194,14 @@ defmodule DoneManager.Automation do
     |> Repo.one()
   end
 
-  defp find_or_create_tag(household_id, external_id) do
+  defp find_or_create_tag(household_id, external_id, scanned_by_id) do
     now = DateTime.utc_now()
 
     case Repo.get_by(NfcTag, household_id: household_id, external_id: external_id) do
       nil ->
         %NfcTag{household_id: household_id}
-        |> NfcTag.changeset(%{external_id: external_id, last_scanned_at: now})
+        |> NfcTag.changeset(%{external_id: external_id})
+        |> put_scan(now, scanned_by_id)
         |> Repo.insert()
         |> case do
           {:ok, tag} ->
@@ -211,18 +212,26 @@ defmodule DoneManager.Automation do
             {:existing,
              touch_tag(
                Repo.get_by!(NfcTag, household_id: household_id, external_id: external_id),
-               now
+               now,
+               scanned_by_id
              )}
         end
 
       tag ->
-        {:existing, touch_tag(tag, now)}
+        {:existing, touch_tag(tag, now, scanned_by_id)}
     end
   end
 
-  defp touch_tag(tag, now) do
-    {:ok, tag} = tag |> NfcTag.changeset(%{last_scanned_at: now}) |> Repo.update()
+  defp touch_tag(tag, now, scanned_by_id) do
+    {:ok, tag} = tag |> Ecto.Changeset.change() |> put_scan(now, scanned_by_id) |> Repo.update()
     tag
+  end
+
+  # Scan metadata is set programmatically, not cast from request input.
+  defp put_scan(changeset, now, scanned_by_id) do
+    changeset
+    |> Ecto.Changeset.put_change(:last_scanned_at, now)
+    |> Ecto.Changeset.put_change(:last_scanned_by_id, scanned_by_id)
   end
 
   defp valid_uuid?(value) when is_binary(value), do: match?({:ok, _}, Ecto.UUID.cast(value))

@@ -9,6 +9,7 @@ defmodule DoneManager.Automation.NfcTag do
   use DoneManager.Schema
   import Ecto.Changeset
 
+  alias DoneManager.Accounts.User
   alias DoneManager.Automation.AutomationCommand
   alias DoneManager.Households.Household
 
@@ -19,6 +20,9 @@ defmodule DoneManager.Automation.NfcTag do
     field :last_scanned_at, :utc_datetime_usec
 
     belongs_to :household, Household
+    # Who the most recent scan was attributed to (the token's user; null for a
+    # shared-device token). Scan metadata, set programmatically, never cast.
+    belongs_to :last_scanned_by, User
     has_many :automation_commands, AutomationCommand
 
     timestamps()
@@ -27,7 +31,7 @@ defmodule DoneManager.Automation.NfcTag do
   @doc false
   def changeset(tag, attrs) do
     tag
-    |> cast(attrs, [:label, :external_id, :active, :last_scanned_at])
+    |> cast(attrs, [:label, :external_id, :active])
     |> validate_required([:external_id])
     |> unique_constraint([:household_id, :external_id])
   end

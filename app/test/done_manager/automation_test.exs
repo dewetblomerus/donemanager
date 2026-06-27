@@ -26,6 +26,19 @@ defmodule DoneManager.AutomationTest do
       assert by_label["Garage"].automation_commands == []
     end
 
+    test "a scan records who last scanned the tag (from the token's user)" do
+      scope = owner_scope_fixture()
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      external_id = "0190c0de-1234-7abc-8def-0123456789ab"
+      {:ok, _outcome} = Automation.handle_scan(authed, external_id)
+
+      [tag] = Automation.list_tags_with_assignment(scope)
+      assert tag.last_scanned_at
+      assert tag.last_scanned_by.id == scope.user.id
+    end
+
     test "update_tag renames a tag in the scope's household" do
       scope = owner_scope_fixture()
       tag = tag_fixture(scope, label: "Old")
