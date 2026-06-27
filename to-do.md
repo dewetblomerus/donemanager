@@ -1,1 +1,2 @@
+- Remove last_used_at from integrations_bearer_tokens, we don't need it.
 - Audit what we have and decide if we have everything needed to start coding

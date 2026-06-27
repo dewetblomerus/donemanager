@@ -2,6 +2,12 @@
 
 Informal running log of choices and why. Newest first.
 
+## Scan feedback latency is a priority
+
+The time from scanning an NFC tag to the scanner seeing confirmation matters more than at-least-once delivery on that path. Lean: resolve the outcome from reads, return/show it immediately, then persist (task_event, occurrence changes, notifications to others) asynchronously and best-effort. `integration_bearer_tokens.last_used_at` is the clearest best-effort case — at-most-once, fire-and-forget, deferred until token management exists (see [stages.md](stages.md)).
+
+Open, pending hands-on testing of NFC Tasks: whether the scanner's ack is the **HTTP response body** (lowest latency, but may need per-tag display config in NFC Tasks) or a **Pushover to the scanner** (no per-tag config, extra round-trip). Also unresolved: `TOGGLE_TIMER` occurrence-creation may need durable (synchronous) writes since a lost write means a missed reminder, unlike a lost completion which self-heals. Decide once tags exist to test with.
+
 ## Datetimes: `utc_datetime_usec` for instants, `Time` for wall-clock
 
 All instant columns use `utc_datetime_usec` (UTC), not `naive_datetime`: Ecto enforces `Etc/UTC` and errors on anything else, so a local time can't silently slip in — validation, not convention. `_usec` avoids truncating `DateTime.utc_now()`. Centralize via `config.exs` migration timestamp type plus a shared schema module's `timestamps_opts`, applied everywhere. Postgres column is `timestamptz`.

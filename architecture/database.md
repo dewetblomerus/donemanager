@@ -8,6 +8,8 @@ This is the proposed V1 database shape for Done Manager.
 erDiagram
     households ||--o{ household_memberships : has
     users ||--o{ household_memberships : joins
+    households ||--o{ household_invitations : sends
+    users ||--o{ household_invitations : invites
     users ||--o{ integration_bearer_tokens : owns
     users ||--o{ integration_bearer_tokens : creates
     households ||--o{ integration_bearer_tokens : authorizes
@@ -65,6 +67,17 @@ erDiagram
         string source
         datetime revoked_at
         datetime last_used_at
+        datetime inserted_at
+        datetime updated_at
+    }
+
+    household_invitations {
+        uuid id PK
+        uuid household_id FK
+        uuid inviter_id FK
+        string invitee_email
+        string status
+        datetime expires_at
         datetime inserted_at
         datetime updated_at
     }
@@ -175,6 +188,7 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `households.timezone` is the single timezone for household-local routines.
 - `users.quiet_hours_start` and `quiet_hours_end` are per-user times (interpreted in the household timezone) bounding when that user may receive reminders. They are per-user from V1 because household members keep different sleeping hours. Overdue reminders are suppressed during a user's quiet hours and resume when their window reopens, so a task that goes overdue overnight notifies each user once their own waking hours begin. The household decides who is notified; each user's quiet hours decide when, and their Pushover destinations decide where.
 - `household_memberships.role` can start simple, such as `owner` or `member`.
+- `household_invitations` holds invites to an `invitee_email` that may not have a `users` row yet, so it is separate from `household_memberships`. `inviter_id` references the inviting user. `status` tracks the lifecycle (such as `pending`, `accepted`, `expired`). `expires_at` bounds how long an invite is valid. On acceptance after the invitee signs up, a `household_memberships` row is created and the invitation is marked accepted. No email is sent in V1; the invitee learns of the invite in-app after signing up.
 - Only users with an `owner` household membership can create integration bearer tokens for that household.
 - `pushover_destinations` is intentionally Pushover-specific. If other notification integrations are added later, they can get their own tables first.
 - `tasks` stores the task definition, behavior type, and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
