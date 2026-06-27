@@ -20,6 +20,12 @@ if System.get_env("PHX_SERVER") do
   config :done_manager, DoneManagerWeb.Endpoint, server: true
 end
 
+# Auth0 client secret is always loaded from the environment, never committed.
+if config_env() != :test do
+  config :ueberauth, Ueberauth.Strategy.Auth0.OAuth,
+    client_secret: System.fetch_env!("AUTH0_CLIENT_SECRET")
+end
+
 config :done_manager, DoneManagerWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 

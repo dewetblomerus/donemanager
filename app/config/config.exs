@@ -9,7 +9,35 @@ import Config
 
 config :done_manager,
   ecto_repos: [DoneManager.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime_usec, binary_id: true]
+
+# UUIDv7 primary/foreign keys and UTC-with-usec timestamps for all migrations.
+# See architecture/database.md and architecture/decisions.md.
+config :done_manager, DoneManager.Repo,
+  migration_primary_key: [type: :uuid],
+  migration_foreign_key: [type: :uuid],
+  migration_timestamps: [type: :utc_datetime_usec]
+
+# Phoenix Scopes: household isolation keyed on household_id (architecture/decisions.md).
+config :done_manager, :scopes,
+  user: [
+    default: true,
+    module: DoneManager.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:household, :id],
+    schema_key: :household_id,
+    schema_type: :binary_id,
+    schema_table: :households,
+    test_data_fixture: DoneManager.HouseholdsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
+# Auth0 via Ueberauth. client_id/domain are per-env (dev.exs/prod.exs);
+# client_secret comes from AUTH0_CLIENT_SECRET in runtime.exs.
+config :ueberauth, Ueberauth,
+  providers: [
+    auth0: {Ueberauth.Strategy.Auth0, []}
+  ]
 
 # Configure the endpoint
 config :done_manager, DoneManagerWeb.Endpoint,

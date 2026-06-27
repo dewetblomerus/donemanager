@@ -90,3 +90,10 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Auth0 OAuth — dev uses the shared dewet-dev tenant. Create a "Done Manager (dev)"
+# Regular Web Application there and paste its Client ID below; client_secret is read
+# from AUTH0_CLIENT_SECRET in config/runtime.exs.
+config :ueberauth, Ueberauth.Strategy.Auth0.OAuth,
+  client_id: System.get_env("AUTH0_CLIENT_ID") || "REPLACE_ME_DONE_MANAGER_DEV_CLIENT_ID",
+  domain: "dewet-dev.us.auth0.com"

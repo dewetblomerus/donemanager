@@ -2,6 +2,10 @@
 
 Informal running log of choices and why. Newest first.
 
+## UI: stock Phoenix generator conventions, no custom design
+
+Use the `mix phx.gen.*` HTML/LiveView output and `core_components` as-is — default layout, tables, forms, flash. No bespoke styling or design system. Custom design is wasted effort for a few-family internal tool, and staying on generator conventions keeps the app legible to the generators and to LLMs (the vibe-coding bet) and cuts upgrade churn. Revisit only if the app is ever productized.
+
 ## Scope carries current_household from day one
 
 The `Scope` holds a `current_household` from the first commit, even though the household-switcher UI is deferred and early users have one household. Retrofitting a tenant key into every query later is far-reaching and error-prone, and multi-household is plausible early (friends asking to be added) even if the app never grows past a few households.

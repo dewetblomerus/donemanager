@@ -1,6 +1,8 @@
 defmodule DoneManagerWeb.Router do
   use DoneManagerWeb, :router
 
+  import DoneManagerWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,7 @@ defmodule DoneManagerWeb.Router do
     plug :put_root_layout, html: {DoneManagerWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_scope
   end
 
   pipeline :api do
@@ -18,6 +21,26 @@ defmodule DoneManagerWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  scope "/auth", DoneManagerWeb do
+    pipe_through :browser
+
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
+    delete "/logout", AuthController, :delete
+  end
+
+  scope "/", DoneManagerWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :require_authenticated,
+      on_mount: [{DoneManagerWeb.UserAuth, :require_authenticated}] do
+      live "/households", HouseholdLive.Index, :index
+      live "/households/new", HouseholdLive.Form, :new
+      live "/households/:id", HouseholdLive.Show, :show
+      live "/invitations", InvitationLive.Index, :index
+    end
   end
 
   # Other scopes may use custom stacks.

@@ -29,5 +29,12 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Auth0 OAuth — prod tenant. Replace with the production Auth0 application's
+# Client ID and tenant domain. client_secret is read from AUTH0_CLIENT_SECRET
+# in config/runtime.exs.
+config :ueberauth, Ueberauth.Strategy.Auth0.OAuth,
+  client_id: "REPLACE_ME_DONE_MANAGER_PROD_CLIENT_ID",
+  domain: "REPLACE_ME.us.auth0.com"
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
