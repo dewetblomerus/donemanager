@@ -2,6 +2,12 @@
 
 Informal running log of choices and why. Newest first.
 
+## Scope carries current_household from day one
+
+The `Scope` holds a `current_household` from the first commit, even though the household-switcher UI is deferred and early users have one household. Retrofitting a tenant key into every query later is far-reaching and error-prone, and multi-household is plausible early (friends asking to be added) even if the app never grows past a few households.
+
+Mostly this is a security stance: Auth0 self-signup is authentication, not authorization. Anyone can sign themselves up, so a freshly signed-up user with no membership must see nothing — default-deny. A user can only ever act within households they are a verified `household_memberships` member of, and `current_household` must be one of them. Building this from day one (via Phoenix [Scopes](https://phoenix.hexdocs.pm/scopes.html), [decided below](#multitenancy-phoenix-scopes)) makes cross-household access structurally impossible rather than a check that can be forgotten. A bad actor signing up gets an empty app, not a window into other households' data.
+
 ## Open question: notifications during quiet hours
 
 Direction, not settled for V1 — captured so it doesn't block. Quiet hours decide *how loud*, not a hard send/skip: priority is chosen in the Pushover-sending code from the recipient's `users.quiet_hours_*`, which keeps the scheduler's notify decision simple.
