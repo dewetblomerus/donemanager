@@ -28,7 +28,7 @@ defmodule DoneManager.TasksTest do
 
     test "requires a name" do
       scope = owner_scope_fixture()
-      assert {:error, changeset} = Tasks.create_task(scope, %{"task_type" => "one_off"})
+      assert {:error, changeset} = Tasks.create_task(scope, %{"task_type" => "timer"})
       assert "can't be blank" in errors_on(changeset).name
     end
 
@@ -85,18 +85,18 @@ defmodule DoneManager.TasksTest do
       assert task.due_time == nil
     end
 
-    test "a one_off task needs timer minutes and carries no cadence" do
+    test "a timer task needs timer minutes and carries no cadence" do
       scope = owner_scope_fixture()
 
       assert {:error, changeset} =
-               Tasks.create_task(scope, %{"name" => "Laundry", "task_type" => "one_off"})
+               Tasks.create_task(scope, %{"name" => "Laundry", "task_type" => "timer"})
 
       assert "can't be blank" in errors_on(changeset).timer_minutes
 
       assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Laundry",
-                 "task_type" => "one_off",
+                 "task_type" => "timer",
                  "timer_minutes" => "60"
                })
 

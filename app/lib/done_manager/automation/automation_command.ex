@@ -1,8 +1,8 @@
 defmodule DoneManager.Automation.AutomationCommand do
   @moduledoc """
-  Maps a tag input to task-specific intent. The Stage 2 slice supports
-  `attempt_completion`; `toggle_timer` arrives later. One active command per tag
-  resolves a scan unambiguously. See architecture/database.md.
+  Links a tag to a task — one active link per tag, so a scan resolves
+  unambiguously. What a scan *does* (complete vs. toggle a timer) is derived from
+  the task's type at scan time, not stored here. See architecture/database.md.
   """
 
   use DoneManager.Schema
@@ -12,11 +12,8 @@ defmodule DoneManager.Automation.AutomationCommand do
   alias DoneManager.Households.Household
   alias DoneManager.Tasks.Task
 
-  @command_types ~w(attempt_completion toggle_timer)
-
   schema "automation_commands" do
     field :label, :string
-    field :command_type, :string
     field :active, :boolean, default: true
 
     belongs_to :household, Household
@@ -29,14 +26,10 @@ defmodule DoneManager.Automation.AutomationCommand do
   @doc false
   def changeset(command, attrs) do
     command
-    |> cast(attrs, [:label, :command_type, :active])
-    |> validate_required([:command_type])
-    |> validate_inclusion(:command_type, @command_types)
+    |> cast(attrs, [:label, :active])
     |> unique_constraint(:nfc_tag_id,
       name: :automation_commands_active_tag_unique,
       message: "tag already has an active command"
     )
   end
-
-  def command_types, do: @command_types
 end

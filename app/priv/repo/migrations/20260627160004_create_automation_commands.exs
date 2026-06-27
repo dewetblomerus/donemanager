@@ -7,7 +7,6 @@ defmodule DoneManager.Repo.Migrations.CreateAutomationCommands do
       add :task_id, references(:tasks, type: :uuid, on_delete: :delete_all), null: false
       add :nfc_tag_id, references(:nfc_tags, type: :uuid, on_delete: :delete_all), null: false
       add :label, :string
-      add :command_type, :string, null: false
       add :active, :boolean, null: false, default: true
 
       timestamps()

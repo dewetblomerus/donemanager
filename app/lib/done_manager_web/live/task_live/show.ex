@@ -60,7 +60,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
       <.header>Assigned tags</.header>
       <.table id="commands" rows={@commands}>
         <:col :let={command} label="Tag">{command.nfc_tag.label || command.nfc_tag.external_id}</:col>
-        <:col :let={command} label="Command">{command.command_type}</:col>
+        <:col :let={_command} label="A scan will">{scan_action(@task)}</:col>
       </.table>
 
       <section :if={@unassigned_tags != []} class="mt-8">
@@ -136,4 +136,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
 
   defp completed_by(%{user: nil}), do: "a shared device"
   defp completed_by(%{user: user}), do: user.display_name || user.email
+
+  defp scan_action(%{task_type: "timer"}), do: "toggle the timer"
+  defp scan_action(_task), do: "complete the task"
 end

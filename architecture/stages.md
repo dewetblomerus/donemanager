@@ -24,7 +24,7 @@ Tables (on top of stage 1):
 5. `integration_bearer_tokens` (households, users) — authenticates the scan
 6. `tasks` (households)
 7. `nfc_tags` (households)
-8. `automation_commands` (households, tasks, nfc_tags) — `command_type` `attempt_completion`
+8. `automation_commands` (households, tasks, nfc_tags) — links a tag to a task; the scan behaviour is derived from the task's type (`attempt_completion` here)
 9. `task_occurrences` (tasks)
 10. `task_events` (task_occurrences, users, nfc_tags, automation_commands, integration_bearer_tokens)
 

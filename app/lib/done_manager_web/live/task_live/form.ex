@@ -9,7 +9,7 @@ defmodule DoneManagerWeb.TaskLive.Form do
   @type_options [
     {"Scheduled — fixed times (e.g. feed the dog every morning)", "scheduled"},
     {"Every-so-often — due if not done in a while (e.g. let the dog out)", "interval"},
-    {"On-demand timer — starts on a tap (e.g. move the laundry)", "one_off"}
+    {"Timer — on-demand countdown started by a tap (e.g. move the laundry)", "timer"}
   ]
   @frequency_options [{"Daily", "daily"}, {"Weekly", "weekly"}]
   @weekday_options [
@@ -65,7 +65,7 @@ defmodule DoneManagerWeb.TaskLive.Form do
               label="Interval in minutes (e.g. 180 for every 3 hours)"
               min="1"
             />
-          <% "one_off" -> %>
+          <% "timer" -> %>
             <.input
               field={@form[:timer_minutes]}
               type="number"

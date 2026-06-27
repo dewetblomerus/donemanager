@@ -16,7 +16,7 @@ defmodule DoneManager.Tasks.Task do
   alias DoneManager.Households.Household
   alias DoneManager.Tasks.TaskOccurrence
 
-  @task_types ~w(scheduled interval one_off)
+  @task_types ~w(scheduled interval timer)
   @frequencies ~w(daily weekly)
   @weekdays ~w(mo tu we th fr sa su)
 
@@ -82,7 +82,7 @@ defmodule DoneManager.Tasks.Task do
         |> put_change(:cadence_weekdays, [])
         |> validate_required([:cadence_interval_minutes])
 
-      "one_off" ->
+      "timer" ->
         changeset
         |> clear_fields([
           :cadence_frequency,

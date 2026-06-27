@@ -42,21 +42,21 @@ defmodule DoneManager.AutomationTest do
       assert tag.last_scanned_by.id == scope.user.id
     end
 
-    test "assigning a tag to a one_off task creates a toggle_timer command" do
+    test "scanning a timer task's tag is derived as a (not-yet-enabled) timer toggle" do
       scope = owner_scope_fixture()
 
       {:ok, task} =
         Tasks.create_task(scope, %{
           "name" => "Laundry",
-          "task_type" => "one_off",
+          "task_type" => "timer",
           "timer_minutes" => "60"
         })
 
       tag = tag_fixture(scope)
       assert {:ok, command} = Automation.assign_tag(scope, task, tag.id)
-      assert command.command_type == "toggle_timer"
+      assert command.task_id == task.id
 
-      # Scanning it is a no-op for now — timer behavior is a later slice.
+      # Behavior is derived from the task type at scan time, not stored.
       {_token, plaintext} = token_fixture(scope)
       {:ok, authed} = Integrations.authenticate(plaintext)
 

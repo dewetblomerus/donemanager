@@ -83,9 +83,8 @@ defmodule DoneManager.Automation do
   end
 
   @doc """
-  Assigns a tag to a task, deriving the command type from the task type: a
-  `one_off` task gets a `toggle_timer` (its duration lives on `tasks.timer_minutes`),
-  everything else gets an `attempt_completion`.
+  Links a tag to a task. What a scan of the tag does is derived from the task's
+  type at scan time, so nothing about the behavior is frozen here.
   """
   def assign_tag(%Scope{household: %Household{id: household_id}}, %Task{} = task, tag_id) do
     %AutomationCommand{
@@ -93,12 +92,9 @@ defmodule DoneManager.Automation do
       task_id: task.id,
       nfc_tag_id: tag_id
     }
-    |> AutomationCommand.changeset(%{command_type: command_type_for(task), label: task.name})
+    |> AutomationCommand.changeset(%{label: task.name})
     |> Repo.insert()
   end
-
-  defp command_type_for(%Task{task_type: "one_off"}), do: "toggle_timer"
-  defp command_type_for(%Task{}), do: "attempt_completion"
 
   @doc "Active commands for a task, with their tag preloaded."
   def list_commands_for_task(%Task{id: task_id}) do
@@ -144,19 +140,26 @@ defmodule DoneManager.Automation do
           occurrence_status: nil
         }
 
-      %AutomationCommand{command_type: "attempt_completion", task: task} = command ->
-        attempt_completion(task, tag, command, token)
-
-      %AutomationCommand{command_type: "toggle_timer", task: task} ->
-        # toggle_timer execution lands in a later slice; the tag is configured,
-        # the scan just doesn't act yet.
-        %{
-          outcome: "timer_not_enabled",
-          message: "On-demand timers aren't enabled yet.",
-          task: task.name,
-          occurrence_status: nil
-        }
+      %AutomationCommand{task: task} = command ->
+        dispatch(task, tag, command, token)
     end
+  end
+
+  # The scan's behavior is derived from the task's type, not stored on the
+  # command, so editing a task's type can never leave a stale command behind.
+  defp dispatch(%Task{task_type: "timer", name: name}, _tag, _command, _token) do
+    # toggle_timer execution lands in a later slice; the tag is linked, the scan
+    # just doesn't act yet.
+    %{
+      outcome: "timer_not_enabled",
+      message: "On-demand timers aren't enabled yet.",
+      task: name,
+      occurrence_status: nil
+    }
+  end
+
+  defp dispatch(%Task{} = task, tag, command, token) do
+    attempt_completion(task, tag, command, token)
   end
 
   defp attempt_completion(%Task{} = task, tag, command, token) do
