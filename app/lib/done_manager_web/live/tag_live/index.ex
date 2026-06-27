@@ -21,7 +21,17 @@ defmodule DoneManagerWeb.TagLive.Index do
 
       <div id="tags" class="space-y-3">
         <div :for={tag <- @tags} id={"tag-#{tag.id}"} class="rounded-lg border border-base-300 p-4">
-          <p class="font-semibold">{tag.label || "Unnamed tag"}</p>
+          <div class="flex items-start justify-between gap-4">
+            <p class="font-semibold">{tag.label || "Unnamed tag"}</p>
+            <.link
+              phx-click="delete"
+              phx-value-id={tag.id}
+              data-confirm={delete_confirm(tag)}
+              class="link text-error"
+            >
+              Delete
+            </.link>
+          </div>
           <p class="text-sm opacity-60">{tag.external_id}</p>
           <p class="text-sm opacity-60">
             Last scanned: {format_time(tag.last_scanned_at)}
@@ -80,6 +90,19 @@ defmodule DoneManagerWeb.TagLive.Index do
     end
   end
 
+  def handle_event("delete", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+    tag = Automation.get_tag!(scope, id)
+
+    case Automation.delete_tag(scope, tag) do
+      {:ok, _tag} ->
+        {:noreply, socket |> put_flash(:info, "Tag deleted.") |> load_tags(scope)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not delete that tag.")}
+    end
+  end
+
   defp load_tags(socket, scope),
     do: assign(socket, :tags, Automation.list_tags_with_assignment(scope))
 
@@ -91,6 +114,15 @@ defmodule DoneManagerWeb.TagLive.Index do
   end
 
   defp tag_form(tag), do: to_form(%{"label" => tag.label})
+
+  defp delete_confirm(tag) do
+    base = "Delete this tag? Scanning it again will re-register it."
+
+    case assignment(tag) do
+      nil -> base
+      task -> "#{base} It is assigned to \"#{task.name}\"; that assignment will be removed."
+    end
+  end
 
   defp format_time(nil), do: "never"
   defp format_time(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")

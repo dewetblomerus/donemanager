@@ -59,6 +59,21 @@ defmodule DoneManager.Automation do
 
   def change_tag(%NfcTag{} = tag, attrs \\ %{}), do: NfcTag.changeset(tag, attrs)
 
+  @doc """
+  Hard-deletes a tag in the scope's household. The row is removed, not soft-
+  flagged: a later scan of the same `external_id` simply re-registers it, and a
+  real delete avoids colliding with the `(household_id, external_id)` unique
+  index. Its active command cascades away; past `task_events` keep their history
+  with a null tag pointer (see the migrations' `on_delete` rules).
+  """
+  def delete_tag(%Scope{household: %Household{id: household_id}}, %NfcTag{} = tag) do
+    if tag.household_id == household_id do
+      Repo.delete(tag)
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   @doc "Tags in the household with no active command, available to assign."
   def list_unassigned_tags(%Scope{household: %Household{id: household_id}}) do
     assigned = from(c in AutomationCommand, where: c.active, select: c.nfc_tag_id)
