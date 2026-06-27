@@ -2,6 +2,20 @@
 
 Informal running log of choices and why. Newest first.
 
+## Open question: notifications during quiet hours
+
+Direction, not settled for V1 — captured so it doesn't block. Quiet hours decide *how loud*, not a hard send/skip: priority is chosen in the Pushover-sending code from the recipient's `users.quiet_hours_*`, which keeps the scheduler's notify decision simple.
+
+- Completion confirmations go to all recipients always; during a recipient's quiet hours they go out silently (Pushover low priority, -1) so an insomniac doing chores at 3am informs the household without waking anyone.
+- Overdue reminders generally should *not* fire during quiet hours (the mop water can wait till morning), but some time-sensitive chores (laundry → dryer) may warrant a silent overnight reminder.
+- Still open: per-task time-sensitivity (which chores override quiet hours), and overnight reminder cadence (avoiding a pile-up of silent notifications).
+
+The V1 model already enables this with no table/column changes: `notification_deliveries.notification_type` separates confirmations from reminders, per-user `quiet_hours_*` drive priority, and `task_events` records each send. The only future addition a time-sensitivity rule might need is one nullable per-task flag — an additive, safe-to-add-later column, not a restructuring.
+
+## App structure: single Phoenix monolith in a monorepo
+
+One Phoenix app, 100% monolith — no umbrella. Less ceremony for a solo, low-maintenance project. The repo stays a monorepo so future sibling directories can live alongside the app: `architecture/`, `terraform/`, `marketing-site`/`website`, `android-app`, `ios-app`. "Monorepo" means one repo for these pieces, not an Elixir umbrella.
+
 ## Scan feedback latency is a priority
 
 The time from scanning an NFC tag to the scanner seeing confirmation matters more than at-least-once delivery on that path. Lean: resolve the outcome from reads, return/show it immediately, then persist (task_event, occurrence changes, notifications to others) asynchronously and best-effort. `integration_bearer_tokens.last_used_at` is the clearest best-effort case — at-most-once, fire-and-forget, deferred until token management exists (see [stages.md](stages.md)).

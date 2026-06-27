@@ -5,6 +5,7 @@ This directory captures high-level system architecture for Done Manager.
 - [API](api.md)
 - [Database](database.md)
 - [Scheduling](scheduling.md)
+- [Flows](flows.md)
 - [Stages](stages.md)
 - [Decisions](decisions.md)
 
