@@ -2,6 +2,12 @@
 
 Informal running log of choices and why. Newest first.
 
+## Scheduling: Oban cron + reconcile loop
+
+Occurrence generation and reminders run as one Oban cron job every minute that reconciles from DB state (see [scheduling.md](scheduling.md)). Oban over a hand-rolled GenServer/Quantum because it's Postgres-backed (no Redis), survives restarts, guarantees single concurrent execution across deploy overlap, and is stable + well-represented in LLM training data. A GenServer only looks simpler — it pushes singleton/retry/restart correctness onto us, the kind of code a vibe-coder can't afford to debug.
+
+Oban is at-least-once, not exactly-once; effectively-once comes from idempotent reconciliation (reminders gated on recorded `reminder_sent` events). Worker is `unique` over non-terminal states with a single-slot queue, so an overrunning run skips the next tick instead of piling up — safe because the loop recomputes from state.
+
 ## Multitenancy: Phoenix Scopes
 
 Use Phoenix 1.8 [Scopes](https://phoenix.hexdocs.pm/scopes.html) for household isolation. Auth is Auth0 via Ueberauth, so we never run `mix phx.gen.auth` (it scaffolds Phoenix's own password auth). Scopes don't need it: define the `Scope` module by hand, configure `config :phoenix, :scopes` with `schema_key: household_id`, and build the scope from the Auth0 session (`users.auth0_sub` → user → household) in a plug / `on_mount` that assigns `:current_scope`. The context and LiveView generators then thread it. Scopes are a mandatory first argument to every data function (`list_tasks(scope)`, `get_task!(scope, id)`), which makes cross-household access structurally impossible rather than something to remember per query — directly addressing OWASP broken-access-control. This is the guardrail that makes skipping Ash safe. Back it with a couple of cross-household isolation tests early.
