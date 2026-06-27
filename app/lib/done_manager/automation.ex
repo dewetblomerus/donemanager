@@ -28,6 +28,37 @@ defmodule DoneManager.Automation do
     |> Repo.all()
   end
 
+  @doc """
+  Tags in the scope's household, newest first, each with its active command (and
+  that command's task) preloaded so the UI can show what a tag is assigned to.
+  """
+  def list_tags_with_assignment(%Scope{household: %Household{id: household_id}}) do
+    active_commands = from(c in AutomationCommand, where: c.active, preload: [:task])
+
+    from(t in NfcTag,
+      where: t.household_id == ^household_id,
+      order_by: [desc: t.inserted_at],
+      preload: [automation_commands: ^active_commands]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Fetches a tag in the scope's current household, or raises (default-deny)."
+  def get_tag!(%Scope{household: %Household{id: household_id}}, id) do
+    Repo.get_by!(NfcTag, id: id, household_id: household_id)
+  end
+
+  @doc "Updates a tag (its label/active) in the scope's household."
+  def update_tag(%Scope{household: %Household{id: household_id}}, %NfcTag{} = tag, attrs) do
+    if tag.household_id == household_id do
+      tag |> NfcTag.changeset(attrs) |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  def change_tag(%NfcTag{} = tag, attrs \\ %{}), do: NfcTag.changeset(tag, attrs)
+
   @doc "Tags in the household with no active command, available to assign."
   def list_unassigned_tags(%Scope{household: %Household{id: household_id}}) do
     assigned = from(c in AutomationCommand, where: c.active, select: c.nfc_tag_id)
