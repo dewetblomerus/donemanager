@@ -36,9 +36,9 @@ All instant columns use `utc_datetime_usec` (UTC), not `naive_datetime`: Ecto en
 
 Wall-clock time-of-day columns (`tasks.due_time`, `tasks.expiration_time`, `users.quiet_hours_start/end`) stay `Time` — they are not instants. They are interpreted in `households.timezone` when an occurrence is generated or a reminder is evaluated. ([Background](https://elixirforum.com/t/why-use-utc-datetime-over-naive-datetime-for-ecto/32532).)
 
-## API host domain: deferred
+## API host domain: api.donemanager.com
 
-The `{api_host}` baked into NFC tags (see [api.md](api.md)) is decided when the domain name is bought. It will be a dedicated API subdomain so the web UI can move without rewriting tags. No tags get written until it's chosen.
+`donemanager.com` is purchased. NFC tags bake in `https://api.donemanager.com/...` (see [api.md](api.md)) — a dedicated API subdomain so the web UI (`donemanager.com` / `app.donemanager.com`) and the backend host can move without rewriting tags. The apex domain is now the permanent dependency: it must be renewed for as long as any tag is in use.
 
 ## Scheduling: Oban cron + reconcile loop
 
