@@ -11,12 +11,13 @@ config :done_manager,
   ecto_repos: [DoneManager.Repo],
   generators: [timestamp_type: :utc_datetime_usec, binary_id: true]
 
-# UUIDv7 primary/foreign keys and UTC-with-usec timestamps for all migrations.
-# See architecture/database.md and architecture/decisions.md.
+# UUIDv7 primary/foreign keys, and `timestamptz` columns for all migrations.
+# Schema fields stay `:utc_datetime_usec` so Ecto enforces UTC with microsecond
+# precision. See architecture/database.md and architecture/decisions.md.
 config :done_manager, DoneManager.Repo,
   migration_primary_key: [type: :uuid],
   migration_foreign_key: [type: :uuid],
-  migration_timestamps: [type: :utc_datetime_usec]
+  migration_timestamps: [type: :timestamptz]
 
 # Phoenix Scopes: household isolation keyed on household_id (architecture/decisions.md).
 config :done_manager, :scopes,

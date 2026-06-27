@@ -7,7 +7,7 @@ defmodule DoneManager.Repo.Migrations.CreateHouseholdInvitations do
       add :inviter_id, references(:users, type: :uuid, on_delete: :nilify_all)
       add :invitee_email, :string, null: false
       add :status, :string, null: false, default: "pending"
-      add :expires_at, :utc_datetime_usec
+      add :expires_at, :timestamptz
 
       timestamps()
     end
