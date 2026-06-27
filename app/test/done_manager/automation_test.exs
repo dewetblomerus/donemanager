@@ -42,6 +42,28 @@ defmodule DoneManager.AutomationTest do
       assert tag.last_scanned_by.id == scope.user.id
     end
 
+    test "assigning a tag to a one_off task creates a toggle_timer command" do
+      scope = owner_scope_fixture()
+
+      {:ok, task} =
+        Tasks.create_task(scope, %{
+          "name" => "Laundry",
+          "task_type" => "one_off",
+          "timer_minutes" => "60"
+        })
+
+      tag = tag_fixture(scope)
+      assert {:ok, command} = Automation.assign_tag(scope, task, tag.id)
+      assert command.command_type == "toggle_timer"
+
+      # Scanning it is a no-op for now — timer behavior is a later slice.
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      assert {:ok, %{outcome: "timer_not_enabled"}} =
+               Automation.handle_scan(authed, tag.external_id)
+    end
+
     test "update_tag renames a tag in the scope's household" do
       scope = owner_scope_fixture()
       tag = tag_fixture(scope, label: "Old")

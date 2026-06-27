@@ -105,6 +105,7 @@ erDiagram
         integer cadence_interval_minutes
         time due_time
         time expiration_time
+        integer timer_minutes
         integer reminder_interval_minutes
         boolean active
         datetime inserted_at
@@ -194,7 +195,7 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - Only users with an `owner` household membership can create integration bearer tokens for that household.
 - `pushover_destinations` is intentionally Pushover-specific. If other notification integrations are added later, they can get their own tables first.
 - `tasks` stores the task definition, behavior type, and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
-- `task_type` is the occurrence-generation strategy, the switch the generator branches on. V1 values: `scheduled` (pre-generated per date from a wall-clock cadence), `interval` (rolled forward at completion, anchored to the last `completed` event), and `one_off` (created on scan by a command such as a laundry timer). Each type owns its own columns: `scheduled` uses `cadence_frequency`, `cadence_weekdays`, `due_time`, `expiration_time`; `interval` uses `cadence_interval_minutes`; `one_off` carries its delay in the command's `config`.
+- `task_type` is the occurrence-generation strategy, the switch the generator branches on. V1 values: `scheduled` (pre-generated per date from a wall-clock cadence), `interval` (rolled forward at completion, anchored to the last `completed` event), and `one_off` (created on scan by a command such as a laundry timer). Each type owns its own columns: `scheduled` uses `cadence_frequency`, `cadence_weekdays`, `due_time`, `expiration_time`; `interval` uses `cadence_interval_minutes`; `one_off` uses `timer_minutes`.
 - Enum-like string columns (`task_type`, `command_type`, `event_type`, `source`, `status`, `role`, cadence values) are stored lowercase snake_case for schema-wide consistency. The cadence columns take *structural* inspiration from the iCalendar RRULE subset so the schema can grow without repainting — not its literal token casing. If real iCal is ever emitted or parsed, casing is applied at that boundary.
 - For `scheduled` tasks, cadence uses normalized columns that mirror a small iCalendar RRULE subset in shape. `cadence_frequency` is `daily` or `weekly` (null for `interval` and `one_off`). `cadence_weekdays` uses lowercase iCalendar-style weekday tokens `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`.
 - For V1, `cadence_weekdays` should be empty for `daily` tasks and non-empty for `weekly` tasks. Future recurrence complexity can grow from this shape with columns such as `cadence_interval`, `cadence_monthdays`, `cadence_until`, or `cadence_count`.
@@ -209,8 +210,9 @@ Users own their Pushover destinations directly. A user can belong to multiple ho
 - `nfc_tags.last_scanned_at` records the most recent scan, including scans of unassigned tags that produce no `task_event`. `nfc_tags.last_scanned_by_id` records who that scan was attributed to (the token's `user_id`, null for a shared-device token). It is a denormalized "who last touched this tag" pointer that lives on the tag precisely because an unassigned-tag scan writes no `task_event` to derive it from; "who completed a chore" remains derived from `task_events`.
 - `automation_commands` maps an input to task-specific intent. `label` is the UI/admin name for the configured command, such as `Dog food bin scan` or `Washer timer`. V1 command types can start with `attempt_completion` and `toggle_timer`.
 - `attempt_completion` is state-dependent. If the current occurrence is incomplete, the command can produce a `completed` event. If it was already completed, it should not undo the task; it can produce a `duplicate_completion_attempted` event and notify the scanner.
-- `toggle_timer` is state-dependent. If no timer occurrence is active, the command can create a delayed occurrence and produce a `timer_started` event. If the timer is already active, it can cancel that occurrence and produce a `timer_cancelled` event.
-- `automation_commands.config` stores command-specific settings, such as `{ "delay_minutes": 60 }` for a laundry timer.
+- `toggle_timer` is state-dependent. If no timer occurrence is active, the command creates a delayed occurrence (`due_at = now + tasks.timer_minutes`) and produces a `timer_started` event. If the timer is already active, it cancels that occurrence and produces a `timer_cancelled` event.
+- `tasks.timer_minutes` (nullable, required for `one_off`) is the countdown length for an on-demand timer, e.g. `60` for a laundry move. It lives on the task — a user setting up "Laundry timer" expects to name the duration there — not on the command, so the tag binding stays a pure trigger.
+- `automation_commands.config` stores command-specific settings as a JSON map. It is unused by V1's command types (the timer duration lives on the task); it exists for future command parameters.
 - `task_events.event_type` can represent outcomes such as `completed`, `duplicate_completion_attempted`, `timer_started`, `timer_cancelled`, `acknowledged`, `reminder_sent`, or `skipped`.
 - `task_events.source` can represent whether the event came from `nfc`, `web`, or a system process.
 - Acknowledgements are task events, not a separate table.

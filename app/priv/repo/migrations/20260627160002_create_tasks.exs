@@ -12,6 +12,7 @@ defmodule DoneManager.Repo.Migrations.CreateTasks do
       add :cadence_interval_minutes, :integer
       add :due_time, :time
       add :expiration_time, :time
+      add :timer_minutes, :integer
       add :reminder_interval_minutes, :integer
       add :active, :boolean, null: false, default: true
 

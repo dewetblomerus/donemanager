@@ -82,16 +82,23 @@ defmodule DoneManager.Automation do
     |> Repo.all()
   end
 
-  @doc "Assigns a tag to a task as an `attempt_completion` command (owner-scoped task)."
+  @doc """
+  Assigns a tag to a task, deriving the command type from the task type: a
+  `one_off` task gets a `toggle_timer` (its duration lives on `tasks.timer_minutes`),
+  everything else gets an `attempt_completion`.
+  """
   def assign_tag(%Scope{household: %Household{id: household_id}}, %Task{} = task, tag_id) do
     %AutomationCommand{
       household_id: household_id,
       task_id: task.id,
       nfc_tag_id: tag_id
     }
-    |> AutomationCommand.changeset(%{command_type: "attempt_completion", label: task.name})
+    |> AutomationCommand.changeset(%{command_type: command_type_for(task), label: task.name})
     |> Repo.insert()
   end
+
+  defp command_type_for(%Task{task_type: "one_off"}), do: "toggle_timer"
+  defp command_type_for(%Task{}), do: "attempt_completion"
 
   @doc "Active commands for a task, with their tag preloaded."
   def list_commands_for_task(%Task{id: task_id}) do
@@ -140,11 +147,13 @@ defmodule DoneManager.Automation do
       %AutomationCommand{command_type: "attempt_completion", task: task} = command ->
         attempt_completion(task, tag, command, token)
 
-      _other ->
+      %AutomationCommand{command_type: "toggle_timer", task: task} ->
+        # toggle_timer execution lands in a later slice; the tag is configured,
+        # the scan just doesn't act yet.
         %{
-          outcome: "tag_unassigned",
-          message: "This tag's command is not supported yet.",
-          task: nil,
+          outcome: "timer_not_enabled",
+          message: "On-demand timers aren't enabled yet.",
+          task: task.name,
           occurrence_status: nil
         }
     end

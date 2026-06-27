@@ -50,6 +50,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
         </:item>
         <:item :if={@task.due_time} title="Due time">{@task.due_time}</:item>
         <:item :if={@task.expiration_time} title="Expires">{@task.expiration_time}</:item>
+        <:item :if={@task.timer_minutes} title="Timer">{@task.timer_minutes} min</:item>
         <:item :if={@task.reminder_interval_minutes} title="Reminder every">
           {@task.reminder_interval_minutes} min
         </:item>

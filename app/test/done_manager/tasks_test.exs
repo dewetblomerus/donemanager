@@ -85,12 +85,22 @@ defmodule DoneManager.TasksTest do
       assert task.due_time == nil
     end
 
-    test "a one_off task carries no cadence" do
+    test "a one_off task needs timer minutes and carries no cadence" do
       scope = owner_scope_fixture()
 
-      assert {:ok, task} =
+      assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Laundry", "task_type" => "one_off"})
 
+      assert "can't be blank" in errors_on(changeset).timer_minutes
+
+      assert {:ok, task} =
+               Tasks.create_task(scope, %{
+                 "name" => "Laundry",
+                 "task_type" => "one_off",
+                 "timer_minutes" => "60"
+               })
+
+      assert task.timer_minutes == 60
       assert task.cadence_frequency == nil
       assert task.cadence_interval_minutes == nil
     end

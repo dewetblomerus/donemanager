@@ -66,9 +66,12 @@ defmodule DoneManagerWeb.TaskLive.Form do
               min="1"
             />
           <% "one_off" -> %>
-            <p class="opacity-70">
-              On-demand timers have no schedule. The delay is set on the tag's command when you assign it.
-            </p>
+            <.input
+              field={@form[:timer_minutes]}
+              type="number"
+              label="Timer minutes (how long the countdown runs after a tap)"
+              min="1"
+            />
           <% _ -> %>
         <% end %>
 

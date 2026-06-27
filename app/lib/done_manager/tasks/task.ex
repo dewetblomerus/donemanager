@@ -29,6 +29,7 @@ defmodule DoneManager.Tasks.Task do
     field :cadence_interval_minutes, :integer
     field :due_time, :time
     field :expiration_time, :time
+    field :timer_minutes, :integer
     field :reminder_interval_minutes, :integer
     field :active, :boolean, default: true
 
@@ -50,12 +51,14 @@ defmodule DoneManager.Tasks.Task do
       :cadence_interval_minutes,
       :due_time,
       :expiration_time,
+      :timer_minutes,
       :reminder_interval_minutes,
       :active
     ])
     |> validate_required([:name, :task_type])
     |> validate_inclusion(:task_type, @task_types)
     |> validate_number(:cadence_interval_minutes, greater_than: 0)
+    |> validate_number(:timer_minutes, greater_than: 0)
     |> validate_number(:reminder_interval_minutes, greater_than: 0)
     |> validate_by_type()
   end
@@ -67,7 +70,7 @@ defmodule DoneManager.Tasks.Task do
     case get_field(changeset, :task_type) do
       "scheduled" ->
         changeset
-        |> clear_fields([:cadence_interval_minutes])
+        |> clear_fields([:cadence_interval_minutes, :timer_minutes])
         |> validate_required([:cadence_frequency, :due_time])
         |> validate_inclusion(:cadence_frequency, @frequencies)
         |> validate_subset(:cadence_weekdays, @weekdays)
@@ -75,7 +78,7 @@ defmodule DoneManager.Tasks.Task do
 
       "interval" ->
         changeset
-        |> clear_fields([:cadence_frequency, :due_time, :expiration_time])
+        |> clear_fields([:cadence_frequency, :due_time, :expiration_time, :timer_minutes])
         |> put_change(:cadence_weekdays, [])
         |> validate_required([:cadence_interval_minutes])
 
@@ -88,6 +91,7 @@ defmodule DoneManager.Tasks.Task do
           :expiration_time
         ])
         |> put_change(:cadence_weekdays, [])
+        |> validate_required([:timer_minutes])
 
       _ ->
         changeset
