@@ -53,4 +53,15 @@ defmodule DoneManager.Timezones do
 
   @doc "Whether the given name is an offered timezone."
   def valid?(timezone), do: timezone in @timezones
+
+  @doc """
+  Formats a UTC instant as wall-clock time in the given household timezone, e.g.
+  `2026-06-27 19:34 SAST`. Falls back to UTC if the zone can't be resolved.
+  """
+  def format(%DateTime{} = utc_instant, timezone) do
+    case DateTime.shift_zone(utc_instant, timezone) do
+      {:ok, local} -> Calendar.strftime(local, "%Y-%m-%d %H:%M %Z")
+      {:error, _} -> Calendar.strftime(utc_instant, "%Y-%m-%d %H:%M UTC")
+    end
+  end
 end

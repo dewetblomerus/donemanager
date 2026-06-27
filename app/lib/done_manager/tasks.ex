@@ -139,6 +139,24 @@ defmodule DoneManager.Tasks do
     {outcome, event}
   end
 
+  @doc """
+  Completes a task from the web UI, attributed to the scope's user. Generates
+  the current occurrence if needed, then records a `completed` (or
+  `duplicate_completion_attempted`) event with `source: "web"` — the same
+  mechanism as a scan, just from the browser. The user must belong to the task's
+  household; the matching `household_id` binding enforces that.
+  """
+  def complete_via_web(
+        %Scope{user: %User{id: user_id}, household: %Household{id: household_id}},
+        %Task{household_id: household_id} = task
+      ) do
+    occurrence = current_or_create_occurrence(task)
+    {outcome, _event} = attempt_completion(occurrence, %{source: "web", user_id: user_id})
+    {:ok, outcome}
+  end
+
+  def complete_via_web(_scope, _task), do: {:error, :unauthorized}
+
   defp record_event(%TaskOccurrence{id: occurrence_id}, event_type, attribution) do
     %TaskEvent{
       task_occurrence_id: occurrence_id,

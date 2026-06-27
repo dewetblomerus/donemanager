@@ -117,6 +117,32 @@ defmodule DoneManager.TasksTest do
     end
   end
 
+  describe "complete_via_web/2" do
+    test "records a web completion attributed to the user, then reports duplicates" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      assert {:ok, :completed} = Tasks.complete_via_web(scope, task)
+
+      occurrence = Tasks.current_occurrence(task)
+      assert Tasks.done?(occurrence)
+      event = Tasks.completion_event(occurrence)
+      assert event.source == "web"
+      assert event.user_id == scope.user.id
+
+      assert {:ok, :duplicate_completion_attempted} = Tasks.complete_via_web(scope, task)
+      assert Tasks.done?(occurrence)
+    end
+
+    test "rejects a user not in the task's household" do
+      owner = owner_scope_fixture()
+      task = task_fixture(owner)
+      other = owner_scope_fixture()
+
+      assert {:error, :unauthorized} = Tasks.complete_via_web(other, task)
+    end
+  end
+
   describe "household isolation (default-deny)" do
     test "list_tasks only returns the scope household's tasks" do
       owner = owner_scope_fixture()

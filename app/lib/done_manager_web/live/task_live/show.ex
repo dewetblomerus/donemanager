@@ -19,13 +19,24 @@ defmodule DoneManagerWeb.TaskLive.Show do
         </:actions>
       </.header>
 
-      <div id="task-status" class="mt-4">
+      <div id="task-status" class="mt-4 flex items-center gap-3">
         <span class={["badge", @done? && "badge-success"]} data-status={@status}>
           {@status}
         </span>
-        <span :if={@completion} class="ml-2 opacity-70">
-          by {@completion.user && (@completion.user.display_name || @completion.user.email)}
+        <span :if={@completion} class="opacity-70">
+          Completed by {completed_by(@completion)} at {DoneManager.Timezones.format(
+            @completion.occurred_at,
+            @household.timezone
+          )} (via {@completion.source})
         </span>
+        <.button
+          :if={!@done?}
+          variant="primary"
+          phx-click="complete"
+          phx-disable-with="Completing..."
+        >
+          Mark complete
+        </.button>
       </div>
 
       <.list>
@@ -94,6 +105,19 @@ defmodule DoneManagerWeb.TaskLive.Show do
     end
   end
 
+  def handle_event("complete", _params, socket) do
+    case Tasks.complete_via_web(socket.assigns.current_scope, socket.assigns.task) do
+      {:ok, :completed} ->
+        {:noreply, socket |> put_flash(:info, "Marked complete.") |> load(socket.assigns.task)}
+
+      {:ok, :duplicate_completion_attempted} ->
+        {:noreply, socket |> put_flash(:info, "Already complete.") |> load(socket.assigns.task)}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You can't complete this task.")}
+    end
+  end
+
   defp load(socket, task) do
     scope = socket.assigns.current_scope
     occurrence = Tasks.current_occurrence(task)
@@ -108,4 +132,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
     |> assign(:unassigned_tags, Automation.list_unassigned_tags(scope))
     |> assign(:assign_form, to_form(%{"tag_id" => nil}))
   end
+
+  defp completed_by(%{user: nil}), do: "a shared device"
+  defp completed_by(%{user: user}), do: user.display_name || user.email
 end
