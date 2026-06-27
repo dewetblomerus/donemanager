@@ -2,6 +2,10 @@
 
 Informal running log of choices and why. Newest first.
 
+## API host domain: deferred
+
+The `{api_host}` baked into NFC tags (see [api.md](api.md)) is decided when the domain name is bought. It will be a dedicated API subdomain so the web UI can move without rewriting tags. No tags get written until it's chosen.
+
 ## Scheduling: Oban cron + reconcile loop
 
 Occurrence generation and reminders run as one Oban cron job every minute that reconciles from DB state (see [scheduling.md](scheduling.md)). Oban over a hand-rolled GenServer/Quantum because it's Postgres-backed (no Redis), survives restarts, guarantees single concurrent execution across deploy overlap, and is stable + well-represented in LLM training data. A GenServer only looks simpler — it pushes singleton/retry/restart correctness onto us, the kind of code a vibe-coder can't afford to debug.
