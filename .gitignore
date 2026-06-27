@@ -1,3 +1,6 @@
+# Local secrets sourced by direnv (.envrc.secrets.example is committed).
+app/.envrc.secrets
+
 # The directory Mix will write compiled artifacts to.
 app/_build/
 
