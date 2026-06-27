@@ -1,1 +1,2 @@
 - Add a Content-Security-Policy to the browser pipeline (Sobelow Config.CSP, currently ignored) — needs browser testing
+- Skip the Elixir CI for docs-only changes (architecture/**, **.md); run a markdown formatter/linter instead. Watch the required-check + paths-ignore deadlock — prefer the always-trigger + paths-filter + aggregator-job pattern if Mix Check is a required check.
