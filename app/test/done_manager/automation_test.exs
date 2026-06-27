@@ -1,6 +1,7 @@
 defmodule DoneManager.AutomationTest do
   use DoneManager.DataCase, async: true
 
+  import Ecto.Query
   import DoneManager.AutomationFixtures
   import DoneManager.HouseholdsFixtures
   import DoneManager.IntegrationsFixtures
@@ -8,6 +9,8 @@ defmodule DoneManager.AutomationTest do
 
   alias DoneManager.Automation
   alias DoneManager.Integrations
+  alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskOccurrence
 
   describe "tags in the UI" do
     test "list_tags_with_assignment shows each tag's assigned task" do
@@ -71,6 +74,23 @@ defmodule DoneManager.AutomationTest do
       {:ok, %{outcome: "tag_registered"}} = Automation.handle_scan(authed, tag.external_id)
       assert [readded] = Automation.list_tags(scope)
       assert readded.external_id == tag.external_id
+    end
+
+    test "a scan completes even when the task has no current occurrence (self-heals)" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+      tag = tag_fixture(scope)
+      command_fixture(scope, task, tag)
+
+      # Simulate a task that has lost its occurrence; the scan must not 500.
+      Repo.delete_all(from o in TaskOccurrence, where: o.task_id == ^task.id)
+      refute Tasks.current_occurrence(task)
+
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      assert {:ok, %{outcome: "completed"}} = Automation.handle_scan(authed, tag.external_id)
+      assert Tasks.done?(Tasks.current_occurrence(task))
     end
 
     test "delete_tag rejects a tag from another household" do

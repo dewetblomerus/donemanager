@@ -151,7 +151,7 @@ defmodule DoneManager.Automation do
   end
 
   defp attempt_completion(%Task{} = task, tag, command, token) do
-    occurrence = Tasks.current_occurrence(task)
+    occurrence = Tasks.current_or_create_occurrence(task)
 
     attribution = %{
       source: "nfc",

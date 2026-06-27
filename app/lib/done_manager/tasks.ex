@@ -56,14 +56,7 @@ defmodule DoneManager.Tasks do
         |> Repo.insert()
         |> unwrap()
 
-      %TaskOccurrence{task_id: task.id}
-      |> TaskOccurrence.changeset(%{
-        occurrence_date: Date.utc_today(),
-        due_at: DateTime.utc_now()
-      })
-      |> Repo.insert()
-      |> unwrap()
-
+      task |> insert_occurrence() |> unwrap()
       task
     end)
   end
@@ -90,6 +83,27 @@ defmodule DoneManager.Tasks do
     )
     |> Repo.one()
   end
+
+  @doc """
+  The task's current occurrence, generating one if none exists. The eager
+  occurrence makes this rare, but a scan must always have something to act on
+  (and an interval task's completion rolls a fresh occurrence forward), so the
+  scan path self-heals rather than failing.
+  """
+  def current_or_create_occurrence(%Task{} = task) do
+    case current_occurrence(task) do
+      nil -> task |> insert_occurrence() |> unwrap_occurrence()
+      occurrence -> occurrence
+    end
+  end
+
+  defp insert_occurrence(%Task{id: task_id}) do
+    %TaskOccurrence{task_id: task_id}
+    |> TaskOccurrence.changeset(%{occurrence_date: Date.utc_today(), due_at: DateTime.utc_now()})
+    |> Repo.insert()
+  end
+
+  defp unwrap_occurrence({:ok, occurrence}), do: occurrence
 
   @doc "Whether an occurrence has been completed, derived from its events."
   def done?(%TaskOccurrence{id: occurrence_id}) do

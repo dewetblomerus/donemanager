@@ -25,7 +25,7 @@ if [[ -z "$token" ]]; then
 fi
 
 # external_id from the first arg, or generate a UUID.
-external_id="${1:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
+external_id="a5421a61-0ae9-4c49-b7bc-239652f7f94b"
 
 echo "POST ${base_url}/v1/tags/${external_id}/scans" >&2
 
