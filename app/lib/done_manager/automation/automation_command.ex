@@ -1,7 +1,7 @@
 defmodule DoneManager.Automation.AutomationCommand do
   @moduledoc """
   Maps a tag input to task-specific intent. The Stage 2 slice supports
-  `ATTEMPT_COMPLETION`; `TOGGLE_TIMER` arrives later. One active command per tag
+  `attempt_completion`; `toggle_timer` arrives later. One active command per tag
   resolves a scan unambiguously. See architecture/database.md.
   """
 
@@ -12,7 +12,7 @@ defmodule DoneManager.Automation.AutomationCommand do
   alias DoneManager.Households.Household
   alias DoneManager.Tasks.Task
 
-  @command_types ~w(ATTEMPT_COMPLETION TOGGLE_TIMER)
+  @command_types ~w(attempt_completion toggle_timer)
 
   schema "automation_commands" do
     field :label, :string

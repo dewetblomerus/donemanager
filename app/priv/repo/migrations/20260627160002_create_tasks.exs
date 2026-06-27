@@ -6,7 +6,7 @@ defmodule DoneManager.Repo.Migrations.CreateTasks do
       add :household_id, references(:households, type: :uuid, on_delete: :delete_all), null: false
       add :name, :string, null: false
       add :description, :string
-      add :task_type, :string, null: false, default: "SCHEDULED"
+      add :task_type, :string, null: false, default: "scheduled"
       add :cadence_frequency, :string
       add :cadence_weekdays, {:array, :string}, null: false, default: []
       add :cadence_interval_minutes, :integer

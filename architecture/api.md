@@ -24,7 +24,7 @@ Only the URL `…/v1/tags/{external_id}/scans` is written onto the tag. The bear
 1. Parse the token → prefix lookup → verify against `token_hash` → load the non-revoked `integration_bearer_tokens` row → scope to its `household_id`.
 2. Find or create `nfc_tags` by (`household_id`, `external_id`). An unknown id is first-seen provisioning: create the row active and unassigned. Update `last_scanned_at`.
 3. Resolve the tag's active `automation_command`.
-4. Execute the command (`ATTEMPT_COMPLETION` / `TOGGLE_TIMER`), record a `task_event`, attribute it to the token's `user_id` (null for shared-device tokens).
+4. Execute the command (`attempt_completion` / `toggle_timer`), record a `task_event`, attribute it to the token's `user_id` (null for shared-device tokens).
 5. Enqueue notifications.
 
 ## Outcomes
@@ -95,13 +95,13 @@ sequenceDiagram
             API-->>Phone: 200 (prior outcome, no new event/notification)
         else tag assigned to an active command
             API->>DB: resolve active automation_command
-            alt ATTEMPT_COMPLETION, occurrence incomplete
+            alt attempt_completion, occurrence incomplete
                 API->>DB: mark done, record task_event (completed)
-            else ATTEMPT_COMPLETION, already done
+            else attempt_completion, already done
                 API->>DB: record task_event (duplicate_completion_attempted), no undo
-            else TOGGLE_TIMER, no active timer
+            else toggle_timer, no active timer
                 API->>DB: create timer occurrence, record task_event (timer_started)
-            else TOGGLE_TIMER, timer active
+            else toggle_timer, timer active
                 API->>DB: cancel occurrence, record task_event (timer_cancelled)
             end
             API->>Push: enqueue notifications (async, after response)

@@ -3,7 +3,7 @@ defmodule DoneManager.Tasks.Task do
   A household chore definition: its name, behavior `task_type`, and cadence.
 
   In the Stage 2 slice a task is created with one eagerly-generated occurrence;
-  recurrence generation (`SCHEDULED`/`INTERVAL`) arrives with the reconcile loop.
+  recurrence generation (`scheduled`/`interval`) arrives with the reconcile loop.
   See architecture/database.md and architecture/stages.md.
   """
 
@@ -13,12 +13,12 @@ defmodule DoneManager.Tasks.Task do
   alias DoneManager.Households.Household
   alias DoneManager.Tasks.TaskOccurrence
 
-  @task_types ~w(SCHEDULED INTERVAL ONE_OFF)
+  @task_types ~w(scheduled interval one_off)
 
   schema "tasks" do
     field :name, :string
     field :description, :string
-    field :task_type, :string, default: "SCHEDULED"
+    field :task_type, :string, default: "scheduled"
     field :cadence_frequency, :string
     field :cadence_weekdays, {:array, :string}, default: []
     field :cadence_interval_minutes, :integer

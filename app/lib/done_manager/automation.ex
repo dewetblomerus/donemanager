@@ -36,14 +36,14 @@ defmodule DoneManager.Automation do
     |> Repo.all()
   end
 
-  @doc "Assigns a tag to a task as an `ATTEMPT_COMPLETION` command (owner-scoped task)."
+  @doc "Assigns a tag to a task as an `attempt_completion` command (owner-scoped task)."
   def assign_tag(%Scope{household: %Household{id: household_id}}, %Task{} = task, tag_id) do
     %AutomationCommand{
       household_id: household_id,
       task_id: task.id,
       nfc_tag_id: tag_id
     }
-    |> AutomationCommand.changeset(%{command_type: "ATTEMPT_COMPLETION", label: task.name})
+    |> AutomationCommand.changeset(%{command_type: "attempt_completion", label: task.name})
     |> Repo.insert()
   end
 
@@ -91,7 +91,7 @@ defmodule DoneManager.Automation do
           occurrence_status: nil
         }
 
-      %AutomationCommand{command_type: "ATTEMPT_COMPLETION", task: task} = command ->
+      %AutomationCommand{command_type: "attempt_completion", task: task} = command ->
         attempt_completion(task, tag, command, token)
 
       _other ->

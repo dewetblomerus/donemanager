@@ -15,7 +15,7 @@ defmodule DoneManager.AutomationFixtures do
     |> Repo.insert!()
   end
 
-  @doc "Assigns `tag` to `task` as an ATTEMPT_COMPLETION command."
+  @doc "Assigns `tag` to `task` as an attempt_completion command."
   def command_fixture(%Scope{} = scope, %Task{} = task, %NfcTag{} = tag) do
     {:ok, command} = DoneManager.Automation.assign_tag(scope, task, tag.id)
     command
