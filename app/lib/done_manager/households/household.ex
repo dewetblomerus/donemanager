@@ -23,5 +23,6 @@ defmodule DoneManager.Households.Household do
     household
     |> cast(attrs, [:name, :timezone])
     |> validate_required([:name, :timezone])
+    |> validate_inclusion(:timezone, DoneManager.Timezones.all())
   end
 end

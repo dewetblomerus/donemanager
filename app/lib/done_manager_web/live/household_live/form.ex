@@ -11,7 +11,12 @@ defmodule DoneManagerWeb.HouseholdLive.Form do
 
       <.form for={@form} id="household-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:name]} type="text" label="Name" />
-        <.input field={@form[:timezone]} type="text" label="Timezone" />
+        <.input
+          field={@form[:timezone]}
+          type="select"
+          label="Timezone"
+          options={DoneManager.Timezones.all()}
+        />
         <footer class="mt-4 flex gap-2">
           <.button variant="primary" phx-disable-with="Saving...">Save household</.button>
           <.button navigate={~p"/households"}>Cancel</.button>

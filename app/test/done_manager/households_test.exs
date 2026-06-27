@@ -22,6 +22,15 @@ defmodule DoneManager.HouseholdsTest do
       assert membership.role == "owner"
       assert Households.owner?(scope)
     end
+
+    test "rejects a timezone that is not in the offered list" do
+      scope = user_scope_fixture()
+
+      assert {:error, changeset} =
+               Households.create_household(scope, %{name: "Home", timezone: "Mars/Olympus"})
+
+      assert "is invalid" in errors_on(changeset).timezone
+    end
   end
 
   describe "household isolation (default-deny)" do
