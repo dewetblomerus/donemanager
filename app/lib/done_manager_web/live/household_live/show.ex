@@ -8,16 +8,6 @@ defmodule DoneManagerWeb.HouseholdLive.Show do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        {@household.name}
-        <:subtitle>Timezone: {@household.timezone}</:subtitle>
-        <:actions>
-          <.button variant="primary" navigate={~p"/households/#{@household}/tasks"}>Tasks</.button>
-          <.button navigate={~p"/households/#{@household}/links"}>Links</.button>
-          <.button navigate={~p"/households"}>Back</.button>
-        </:actions>
-      </.header>
-
       <.header>Members</.header>
       <.table id="members" rows={@memberships}>
         <:col :let={membership} label="Email">{membership.user.email}</:col>
