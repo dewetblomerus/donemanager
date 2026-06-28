@@ -15,9 +15,7 @@ defmodule DoneManagerWeb.ScanControllerTest do
   end
 
   defp scan(conn, plaintext, external_id) do
-    conn
-    |> put_req_header("authorization", "Bearer " <> plaintext)
-    |> post(~p"/v1/tags/#{external_id}/scans")
+    post(conn, ~p"/v1/tags/#{external_id}/scans", %{access_token: plaintext})
   end
 
   test "scanning an assigned tag completes the open occurrence end to end", %{
@@ -80,5 +78,17 @@ defmodule DoneManagerWeb.ScanControllerTest do
 
     bad = scan(build_conn(), "bogus.token", UUIDv7.generate())
     assert json_response(bad, 401)
+  end
+
+  test "an authorization header without an access_token param is a 401", %{
+    plaintext: plaintext,
+    conn: conn
+  } do
+    conn =
+      conn
+      |> put_req_header("authorization", "Bearer " <> plaintext)
+      |> post(~p"/v1/tags/#{UUIDv7.generate()}/scans")
+
+    assert json_response(conn, 401)
   end
 end

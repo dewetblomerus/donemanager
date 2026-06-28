@@ -5,7 +5,8 @@ that lives in `app/test`.
 
 ## scan_tag.sh
 
-Simulates an NFC tag scan (`POST /v1/tags/{external_id}/scans`, bearer auth).
+Simulates an NFC tag scan (`POST /v1/tags/{external_id}/scans`) with an
+`access_token` body parameter.
 
 1. Start the app: `cd app && mix phx.server`
 2. Mint a token in `iex -S mix` (owner scope required):
@@ -20,10 +21,10 @@ Simulates an NFC tag scan (`POST /v1/tags/{external_id}/scans`, bearer auth).
 
    ```bash
    # Fresh tag (registers it, then assign it to a task in the web UI):
-   DM_TOKEN=<plaintext> ./scan_tag.sh
+   DM_ACCESS_TOKEN=<plaintext> ./scan_tag.sh
 
    # Re-scan a known tag (e.g. one assigned to a task -> completes it):
-   DM_TOKEN=<plaintext> ./scan_tag.sh 0190c0de-1234-7abc-8def-0123456789ab
+   DM_ACCESS_TOKEN=<plaintext> ./scan_tag.sh 0190c0de-1234-7abc-8def-0123456789ab
    ```
 
 Override the host with `DM_BASE_URL` (default `http://localhost:4000`).

@@ -52,7 +52,7 @@ defmodule DoneManagerWeb.Router do
 
   # Integration API. NFC tags bake in these paths — see architecture/api.md.
   scope "/v1", DoneManagerWeb do
-    pipe_through [:api, :require_bearer_token]
+    pipe_through [:api, :require_access_token]
 
     post "/tags/:external_id/scans", ScanController, :create
   end

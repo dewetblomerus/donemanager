@@ -31,7 +31,8 @@ defmodule DoneManagerWeb.TagLive.Index do
             </div>
             <p class="mt-2 text-sm text-base-content/70">
               Write this URL to an NFC tag or call it from a scanning device. The UUIDv7 in the
-              path is the tag's unique id, and the first authenticated POST registers it here.
+              path is the tag's unique id, and the first POST with an access_token parameter
+              registers it here.
             </p>
           </div>
 
@@ -67,7 +68,7 @@ defmodule DoneManagerWeb.TagLive.Index do
           </li>
           <li class="rounded-lg border border-base-300 bg-base-100 p-3">
             <span class="font-semibold text-base-content">3. POST</span>
-            with an API token bearer header.
+            with a body parameter named access_token.
           </li>
         </ol>
       </section>
