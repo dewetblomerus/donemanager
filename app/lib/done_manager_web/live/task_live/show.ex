@@ -40,9 +40,8 @@ defmodule DoneManagerWeb.TaskLive.Show do
 
       <.list>
         <:item title="Type">{@task.task_type}</:item>
-        <:item :if={@task.cadence_frequency} title="Frequency">{@task.cadence_frequency}</:item>
-        <:item :if={@task.cadence_weekdays != []} title="Weekdays">
-          {Enum.join(@task.cadence_weekdays, ", ")}
+        <:item :if={@task.task_type == "scheduled"} title="Weekdays">
+          {scheduled_weekdays(@task.cadence_weekdays)}
         </:item>
         <:item :if={@task.cadence_interval_minutes} title="Every">
           {@task.cadence_interval_minutes} min
@@ -107,4 +106,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
+
+  defp scheduled_weekdays([]), do: "Every day"
+  defp scheduled_weekdays(days), do: Enum.join(days, ", ")
 end

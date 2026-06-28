@@ -7,7 +7,6 @@ defmodule DoneManager.Repo.Migrations.CreateTasks do
       add :name, :string, null: false
       add :description, :string
       add :task_type, :string, null: false
-      add :cadence_frequency, :string
       add :cadence_weekdays, {:array, :string}, null: false, default: []
       add :cadence_interval_minutes, :integer
       add :due_time, :time

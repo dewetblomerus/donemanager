@@ -17,14 +17,12 @@ defmodule DoneManager.Tasks.Task do
   alias DoneManager.Tasks.TaskOccurrence
 
   @task_types ~w(scheduled interval timer)
-  @frequencies ~w(daily weekly)
   @weekdays ~w(mo tu we th fr sa su)
 
   schema "tasks" do
     field :name, :string
     field :description, :string
     field :task_type, :string
-    field :cadence_frequency, :string
     field :cadence_weekdays, {:array, :string}, default: []
     field :cadence_interval_minutes, :integer
     field :due_time, :time
@@ -47,7 +45,6 @@ defmodule DoneManager.Tasks.Task do
       :name,
       :description,
       :task_type,
-      :cadence_frequency,
       :cadence_weekdays,
       :cadence_interval_minutes,
       :due_time,
@@ -75,41 +72,24 @@ defmodule DoneManager.Tasks.Task do
         |> clear_fields([:cadence_interval_minutes, :timer_minutes])
         # A scheduled task must expire so a missed slot resolves and the next
         # one is generated (see architecture/database.md).
-        |> validate_required([:cadence_frequency, :due_time, :expiration_time])
-        |> validate_inclusion(:cadence_frequency, @frequencies)
+        |> validate_required([:due_time, :expiration_time])
         |> validate_subset(:cadence_weekdays, @weekdays)
-        |> validate_weekdays()
 
       "interval" ->
         changeset
-        |> clear_fields([:cadence_frequency, :due_time, :expiration_time, :timer_minutes])
+        |> clear_fields([:due_time, :expiration_time, :timer_minutes])
         |> put_change(:cadence_weekdays, [])
         |> validate_required([:cadence_interval_minutes])
 
       "timer" ->
         changeset
         |> clear_fields([
-          :cadence_frequency,
           :cadence_interval_minutes,
           :due_time,
           :expiration_time
         ])
         |> put_change(:cadence_weekdays, [])
         |> validate_required([:timer_minutes])
-
-      _ ->
-        changeset
-    end
-  end
-
-  # Weekly needs at least one weekday; daily must have none.
-  defp validate_weekdays(changeset) do
-    case {get_field(changeset, :cadence_frequency), get_field(changeset, :cadence_weekdays)} do
-      {"weekly", []} ->
-        add_error(changeset, :cadence_weekdays, "pick at least one day for a weekly task")
-
-      {"daily", days} when days != [] ->
-        put_change(changeset, :cadence_weekdays, [])
 
       _ ->
         changeset
@@ -136,6 +116,5 @@ defmodule DoneManager.Tasks.Task do
   defp normalize_times(attrs), do: attrs
 
   def task_types, do: @task_types
-  def frequencies, do: @frequencies
   def weekdays, do: @weekdays
 end

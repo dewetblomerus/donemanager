@@ -34,7 +34,6 @@ med_tasks = [
   %{
     "name" => "Knox Morning Meds",
     "task_type" => "scheduled",
-    "cadence_frequency" => "daily",
     "due_time" => "08:00:00",
     "expiration_time" => "12:00:00",
     "valid_from" => "08:00:00"
@@ -42,7 +41,6 @@ med_tasks = [
   %{
     "name" => "Knox Afternoon Meds",
     "task_type" => "scheduled",
-    "cadence_frequency" => "daily",
     "due_time" => "14:00:00",
     "expiration_time" => "18:00:00",
     "valid_from" => "14:00:00"
@@ -50,7 +48,6 @@ med_tasks = [
   %{
     "name" => "Knox Nighttime Meds",
     "task_type" => "scheduled",
-    "cadence_frequency" => "daily",
     "due_time" => "20:00:00",
     "expiration_time" => "23:59:00",
     "valid_from" => "20:00:00"
