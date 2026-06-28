@@ -4,7 +4,9 @@ Plain-language description of what people do with Done Manager, for a product re
 
 ## What the app is for
 
-A household tracks shared chores — feeding the dog, moving laundry, emptying the mop — by tapping a phone on an NFC tag stuck near where the chore happens. Tapping marks the chore done and lets the rest of the household know. Some chores also nag the household until someone does them.
+A household tracks shared chores — feeding the dog, moving laundry, emptying the mop — by tapping a phone on an NFC tag stuck near where the chore happens. The tag opens a web page that marks the chore done. Some chores also nag the household until someone does them.
+
+The first release is routine management only: tapping completes chores and the web app shows what's done and what's due. Notifying the rest of the household (push notifications) comes later.
 
 ## Getting started
 
@@ -19,14 +21,18 @@ A person can belong to more than one household.
 ## Setting up a chore
 
 1. In the web app, a household member creates a task — its name, how it recurs, and when it is due.
-2. They place an NFC tag where the chore happens and assign it to the task.
-3. A brand-new tag can be tapped first and assigned afterward: the first tap registers the tag, and the web app then offers to attach it to a task.
+2. The web app gives them a link for that task. They write the link onto an NFC tag (with NFC Tools) and stick the tag where the chore happens. The same link could go on a printed QR code instead.
+3. Re-pointing a tag to a different task later is a change in the web app — the physical tag never has to be rewritten.
+
+The link on the tag is public — it holds no secret. It does nothing on its own; only a signed-in household member can complete a chore with it.
 
 ## Doing a chore (the tap)
 
-1. A person taps their phone on the tag.
-2. The chore is marked done, and they immediately see a confirmation that it worked.
-3. The rest of the household can be notified that it's done.
+1. A person taps their phone on the tag, which opens the link in their browser.
+2. If they aren't signed in, they sign in once (through Auth0); the browser stays signed in afterward.
+3. The chore is marked done and they land on a page confirming it.
+
+Tapping again, reloading, or reopening the page tomorrow does nothing further — the page just shows the chore as already done, so an accidental double-tap is harmless.
 
 A tag can also act as a timer instead of a simple "done" — tapping the laundry tag starts a 60-minute countdown to move the wash to the dryer, and tapping again cancels it.
 
@@ -36,13 +42,16 @@ A tag can also act as a timer instead of a simple "done" — tapping the laundry
 - **On-demand timer** — has no schedule; it starts when someone taps, like the laundry move.
 - **Every-so-often** — has no fixed time but becomes due if it hasn't been done in a while, like letting the dog out every few hours or emptying the mop every couple of days. Tapping at any time resets the clock.
 
-## Getting notified
+## Seeing what's done and what's due
+
+In the web app, the household can see each task's current state — done, due, or overdue — and how overdue it is ("3 days overdue"). An every-so-often chore that nobody has done just keeps showing as more and more overdue until someone does it, and the history of completions shows how often it actually happened.
+
+## Getting notified (later)
+
+Push notifications are a later addition, not in the first release. The intended shape:
 
 - The household decides who should be notified about a chore. Each person decides where their notifications go and their quiet hours.
-- Quiet hours are per person, so two people in the same household can sleep on different schedules. A confirmation that a chore was done still reaches everyone — but silently during a person's quiet hours, so they simply see it in the morning. Someone with insomnia doing chores at 3am won't wake anyone else.
-- Reminders for *overdue* chores generally wait until a person's waking hours. A few time-sensitive chores (like moving laundry before it sours) may still send a silent overnight nudge. The exact rules here are still being worked out.
-- An overdue "every-so-often" chore keeps reminding until someone does it.
+- Quiet hours are per person, so two people in the same household can sleep on different schedules. A confirmation that a chore was done still reaches everyone — but silently during a person's quiet hours, so they simply see it in the morning.
+- Reminders for *overdue* chores generally wait until a person's waking hours, with a few time-sensitive exceptions. The exact rules are still being worked out.
 
-## Acknowledging from afar
-
-When someone gets a notification but isn't near the tag, they can open a link in the notification, sign in if needed, and tap a button to acknowledge the chore. Opening the link alone does nothing — it takes the explicit button press. A physical button (such as an Arduino by the door) can also acknowledge a chore on the household's behalf.
+Until then, completing a chore from afar is just opening the task in the web app and marking it done — the same authenticated action as a tap, without needing to be near the tag.

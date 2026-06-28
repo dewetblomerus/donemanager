@@ -2,86 +2,60 @@
 
 This directory captures high-level system architecture for Done Manager.
 
-- [API](api.md)
 - [Database](database.md)
 - [Scheduling](scheduling.md)
 - [Flows](flows.md)
 - [Stages](stages.md)
 - [Decisions](decisions.md)
 
+The one stable, painful-to-change contract — the tag URL `GET /links/{id}` — lives in the [Database](database.md) `links` notes.
+
 ## High-Level Flow
 
 ```mermaid
 flowchart TB
-    user[Household user]
-    phone[Phone]
-    tag[NFC tag]
-    nfcTools[NFC Tools Pro]
-    nfcTasks[NFC Tasks]
-    backend[Done Manager backend]
-    pushover[Pushover]
-    otherPhones[Household phones]
+    user[Household member]
+    phone[Phone browser]
+    tag[NFC tag / QR code]
+    nfcTools[NFC Tools]
+    app[Done Manager - Phoenix/LiveView]
+    auth0[Auth0]
 
     user --> phone
 
     subgraph setup[Tag setup]
-        nfcTools -->|writes task action| tag
+        app -->|gives link URL| user
+        nfcTools -->|writes link URL| tag
     end
 
-    subgraph scan[Task completion]
+    subgraph tapflow[Task completion]
         phone -->|reads| tag
-        tag -->|opens action| nfcTasks
-        nfcTasks -->|POST with bearer token| backend
+        tag -->|opens link in browser| phone
+        phone -->|GET /links/:id| app
+        app -.->|no session: sign in| auth0
+        app -->|redirect to /occurrences/:id/execute| phone
     end
-
-    subgraph notify[Notification delivery]
-        backend -->|push request| pushover
-        pushover -->|push| phone
-        pushover -->|push with durable task link| otherPhones
-        otherPhones -.->|login, view page, acknowledge| backend
-    end
-
-    backend -->|records event| backend
 ```
 
 ## Components
 
-- **Phones** are the main user interface for scanning tags, receiving notifications, and acknowledging tasks.
-- **NFC tags** are placed near physical task locations, such as dog food or medication.
-- **NFC Tools Pro** writes task-specific actions to NFC tags.
-- **NFC Tasks** reads NFC tags and sends authenticated HTTP requests to the backend.
-- **Done Manager backend** receives task events, records task state, and decides who should be notified.
-- **Pushover** delivers push notifications to household phones.
+- **Phones** are the main interface: a browser that opens the tag's link, signs in through Auth0 if needed, and shows the confirmation page.
+- **NFC tags / QR codes** are placed near physical task locations and carry a single public link — no secret.
+- **NFC Tools** writes the link URL (given by the web app) onto a tag.
+- **Done Manager** (Phoenix + LiveView) authenticates the session, authorizes household membership, completes the occurrence, and renders the web UI.
+- **Auth0** authenticates people; authorization is household membership inside the app.
 
-## NFC Task Completion Flow
+Pushover and push notifications are post-MVP and intentionally absent from the V1 flow.
 
-1. A task-specific action is written to an NFC tag with NFC Tools Pro.
-2. A user scans the NFC tag with their phone.
-3. NFC Tasks sends a `POST` request to the Done Manager backend.
-4. The request is authenticated with an `Authorization: Bearer <token>` header.
-5. The backend records the task event.
-6. The backend sends push notification requests to Pushover.
-7. Pushover delivers notifications to household phones.
+## Task Completion Flow
 
-## Remote Acknowledgement
+1. A household member creates a task in the web app, which gives them a link URL.
+2. They write that URL onto an NFC tag (or a QR code) with NFC Tools and place it where the chore happens.
+3. A person taps the tag; the link opens in their phone browser.
+4. If they have no Auth0 session, they sign in once; the browser stays signed in.
+5. The app verifies they are a member of the link's household, resolves the open occurrence, and redirects to `/occurrences/:id/execute`, which sets `completed_at`/`completed_by_id` and renders the occurrence page.
+6. Reloading or double-tapping is idempotent — the occurrence id is already resolved, so it just re-renders "done" rather than completing again.
 
-Users can acknowledge a task when they are not near an NFC tag by opening an authenticated backend page from the push notification.
+## Completing from afar
 
-The V1 design is for the backend to include a durable task or acknowledgement link in the Pushover notification. The user taps the link, signs in if needed, reviews a backend-rendered page, and taps an acknowledge button.
-
-The link should not acknowledge the task merely by being opened. Opening the link should render the authenticated acknowledgement page. The explicit button press should send a state-changing request that marks the task as acknowledged by the logged-in user.
-
-Some acknowledgements can also come from physical integrations instead of logged-in users. For example, an Arduino button press can acknowledge a task through an integration bearer token, and the activity log can record that the task was acknowledged by the Arduino button.
-
-Important constraint: avoid relying on Pushover emergency notifications solely to collect acknowledgements through Pushover.
-
-Design considerations for the authenticated acknowledgement approach:
-
-- The link can be durable because authorization comes from login, not from the URL token.
-- The acknowledgement page should require authentication.
-- The acknowledgement action should require an explicit button press.
-- Opening the link should not perform the acknowledgement.
-- The backend should record which authenticated user acknowledged the task.
-- Physical integrations can acknowledge tasks without a logged-in user when authenticated by an integration bearer token.
-- The acknowledgement action should be safe against accidental repeats.
-- The remote acknowledgement flow should be usable from a phone browser without requiring an app install.
+There is no separate remote-acknowledgement flow in V1. Because authorization is the login and not a URL token, completing a chore when you're not near the tag is the same authenticated action as a tap — open the task in the web app and mark it done. A future push notification can carry a durable link to that same page; the link is safe to be durable precisely because opening it does nothing until a signed-in member acts.

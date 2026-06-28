@@ -15,29 +15,30 @@ Tables:
 
 Testable outcome: two users, one household, owner invites by email, invitee signs up and the invite converts to a membership.
 
-## Stage 2 — Smallest vertical slice: scan completes a task
+## Stage 2 — Smallest vertical slice: tap completes a task
 
-The thinnest real path through the domain: create a task in the web UI, scan an assigned tag, the task shows as done. No notifications, no recurrence generation, no Oban yet — the web UI creates the task and its current occurrence eagerly, and the scan completes it.
+The thinnest real path through the domain: create a task in the web UI, tap its link, the task shows as done. No notifications, no reminders, no Oban yet — the web UI creates the task and its first occurrence eagerly, and the link execute completes it.
 
 Tables (on top of stage 1):
 
-5. `integration_bearer_tokens` (households, users) — authenticates the scan
-6. `tasks` (households)
-7. `nfc_tags` (households)
-8. `automation_commands` (households, tasks, nfc_tags) — links a tag to a task; the scan behaviour is derived from the task's type (`attempt_completion` here)
-9. `task_occurrences` (tasks)
-10. `task_events` (task_occurrences, users, nfc_tags, automation_commands, integration_bearer_tokens)
+5. `tasks` (households)
+6. `links` (households)
+7. `link_tasks` (links, tasks) — the join that binds a link to a task; the execute behaviour is derived from the task's type (`attempt_completion` here)
+8. `task_occurrences` (tasks) — completion stored on the row (`completed_at`, `completed_by_id`)
+
+There is no `integration_bearer_tokens` and no `task_events` table — authorization is the Auth0 session + household membership, and completion status lives on the occurrence.
 
 Architecture to honour even in the slice:
 - Scope every query by `household_id` via Phoenix Scopes from the start.
-- Occurrence status is derived from `task_events`, never stored.
-- The scan endpoint follows the [API](api.md) contract (`POST /v1/tags/{external_id}/scans`, bearer token, find-or-create tag).
+- The tag follows the stable contract `GET /links/{id}` ([database.md](database.md) `links` notes): require a session, authorize household membership, resolve the open occurrence, and redirect to `GET /occurrences/{id}/execute`, which marks it done and renders the occurrence page.
+- Status is read from `task_occurrences.completed_at`, not a status column.
 
-Testable outcome: a request to the scan endpoint with a valid token completes the open occurrence, records a `completed` `task_event`, and the web UI reflects done — provable end to end without any push or scheduler.
+Testable outcome: a signed-in member taps `/links/{id}`, gets redirected to `/occurrences/{id}/execute`, the occurrence's `completed_at`/`completed_by_id` are set, and the web UI reflects done — provable end to end without any push or scheduler. A non-member gets `403`; reloading the execute URL is idempotent and does not double-complete.
 
 ## Deferred to later stages
 
-- Notifications: `pushover_destinations`, `notification_deliveries`, and async/best-effort write path (see [decisions.md](decisions.md) latency note).
-- Scheduling: the Oban reconcile loop for occurrence generation and reminders (see [scheduling.md](scheduling.md)). Until then, occurrences are created eagerly.
+- Generation: the Oban reconcile loop and the single-invariant occurrence lifecycle (see [scheduling.md](scheduling.md)). Until then, the first occurrence is created eagerly.
 - `scheduled` and `interval` task types: the slice uses one task with an eagerly-created occurrence; recurrence comes with the reconcile loop.
-- Token management UI and `integration_bearer_tokens.last_used_at`.
+- Notifications: `pushover_destinations`, `notification_deliveries`, quiet hours, and reminders.
+- `timer` task type and the `toggle_timer` behaviour.
+- Multi-task links and execute-window routing.

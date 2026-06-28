@@ -2,6 +2,28 @@
 
 Informal running log of choices and why. Newest first.
 
+## NFC carries a public link, not a secret
+
+The Android NFC tooling can't keep a secret separate from what's written to the tag — anything on the tag is public to anyone who scans it. So the bearer-token-on-device model is dead. A tag now carries only a public URL, `GET /links/{id}`, that opens in the phone browser. Authorization comes from the **Auth0 session + household membership**, attribution from the session user. The id is the `links` row's UUIDv7 PK (no `external_id` — that only existed because a tag writer used to mint the id); it's a deep-link target, not a credential.
+
+Consequences, all reflected in [database.md](database.md):
+- **Dropped** `integration_bearer_tokens` and `task_events`. A future non-browser client (Home Assistant, Arduino) can reintroduce a token table when it actually exists.
+- **Renamed** `nfc_tags` → `links` (slimmed: no `external_id`, no `last_scanned_*`) and `automation_commands` → `link_tasks` (a plain `(household_id, link_id, task_id)` join — no `label`, no `active`; deactivate by deleting the row).
+- **Completion status moves onto `task_occurrences`** (`completed_at`, `completed_by_id`), reversing the old "status derived from `task_events`, never stored" rule — that rule depended on the dropped table.
+- **The tag URL `GET /links/{id}` resolves and redirects to `GET /occurrences/{id}/execute`, which marks done and renders the occurrence.** Execution is occurrence-idempotent — the id pins one occurrence, so reload / double-tap just re-renders "done." A `GET` with a side effect is safe because it's auth-gated and idempotent. The old "opening a link does nothing, only the button press acts" rule was for unauthenticated remote ack and is no longer needed — the session is the gate. Deferred to Undo: the Undo action (a `POST`) will redirect to the inert `/occurrences/{id}` show page so a reload can't re-fire after an undo; the stable `/links/{id}` tag contract is unaffected.
+- `tasks.scan_window_*` renamed to `tasks.execute_window_*`.
+- `api.md` is deleted — there's no JSON API now; the one stable contract (the tag URL) lives in the `database.md` `links` notes.
+- **MVP is routine management only — no Pushover send path.** Notifications (`pushover_destinations`, `notification_deliveries`, reminders, quiet hours) are post-MVP.
+
+## One occurrence lifecycle: exactly one open occurrence
+
+`scheduled` and `interval` tasks share a single invariant: a task has exactly one open occurrence; when it resolves (`completed_at` set **or** `expires_at < now`), the loop creates the next. No rolling-horizon pre-generation; future occurrences are computed for display, not stored. The only per-type code is the next-`due_at` formula (calendar slot vs last completion + interval). See [scheduling.md](scheduling.md).
+
+This drove two sub-decisions:
+- **A `scheduled` task must set `expiration_time`** (changeset constraint), so a missed slot resolves by expiring and doesn't block the next slot — a forgotten breakfast must not suppress dinner. We couldn't think of a calendar-anchored task that should stay open forever; easy to loosen later, hard to add.
+- **`interval` tasks never expire** (`expires_at = null`): they stay open and grow more overdue ("3 days overdue") until done, then roll forward. This is what makes "why is the plant dying" answerable — the completed chain is honest history with no pile-up of missed rows.
+- **No `occurrence_date` column.** It was only ever a generation key; the invariant keys on resolution instead (uniqueness guard on `(task_id, due_at)`). The local date is derived from `due_at` for display.
+
 ## UI: stock Phoenix generator conventions, no custom design
 
 Use the `mix phx.gen.*` HTML/LiveView output and `core_components` as-is — default layout, tables, forms, flash. No bespoke styling or design system. Custom design is wasted effort for a few-family internal tool, and staying on generator conventions keeps the app legible to the generators and to LLMs (the vibe-coding bet) and cuts upgrade churn. Revisit only if the app is ever productized.
@@ -20,7 +42,7 @@ Direction, not settled for V1 — captured so it doesn't block. Quiet hours deci
 - Overdue reminders generally should *not* fire during quiet hours (the mop water can wait till morning), but some time-sensitive chores (laundry → dryer) may warrant a silent overnight reminder.
 - Still open: per-task time-sensitivity (which chores override quiet hours), and overnight reminder cadence (avoiding a pile-up of silent notifications).
 
-The V1 model already enables this with no table/column changes: `notification_deliveries.notification_type` separates confirmations from reminders, per-user `quiet_hours_*` drive priority, and `task_events` records each send. The only future addition a time-sensitivity rule might need is one nullable per-task flag — an additive, safe-to-add-later column, not a restructuring.
+The model already enables this with no table/column changes: `notification_deliveries.notification_type` separates confirmations from reminders, per-user `quiet_hours_*` drive priority, and each `notification_deliveries` row records a send. The only future addition a time-sensitivity rule might need is one nullable per-task flag — an additive, safe-to-add-later column, not a restructuring. (Notifications are post-MVP regardless.)
 
 ## App structure: single Phoenix monolith in a monorepo
 
@@ -28,11 +50,9 @@ One Phoenix app, 100% monolith — no umbrella. Less ceremony for a solo, low-ma
 
 CI runs `mix check` (ex_check) via the shared [dewetblomerus/actions-elixir](https://github.com/dewetblomerus/actions-elixir) reusable workflow with `working-directory: app`. The check policy (Credo, Sobelow, format, warnings-as-errors, unused deps, tests) lives in `app/mix.exs` + `app/.check.exs`; `mix_audit` is a separate informational check. Sobelow's `Config.CSP` finding is ignored for now — adding a Content-Security-Policy is a deferred hardening step that needs browser testing.
 
-## Scan feedback latency is a priority
+## Tap feedback latency is a priority
 
-The time from scanning an NFC tag to the scanner seeing confirmation matters more than at-least-once delivery on that path. Lean: resolve the outcome from reads, return/show it immediately, then persist (task_event, occurrence changes, notifications to others) asynchronously and best-effort. `integration_bearer_tokens.last_used_at` is the clearest best-effort case — at-most-once, fire-and-forget, deferred until token management exists (see [stages.md](stages.md)).
-
-Open, pending hands-on testing of NFC Tasks: whether the scanner's ack is the **HTTP response body** (lowest latency, but may need per-tag display config in NFC Tasks) or a **Pushover to the scanner** (no per-tag config, extra round-trip). Also unresolved: `toggle_timer` occurrence-creation may need durable (synchronous) writes since a lost write means a missed reminder, unlike a lost completion which self-heals. Decide once tags exist to test with.
+The time from tapping a tag to the person seeing confirmation matters. With the browser-link model the ack is concrete: the tap opens `/links/{id}`, which redirects to `/occurrences/{id}/execute` — that completes the occurrence and renders the page, which *is* the confirmation, no extra round-trip and no per-tag display config. Keep the completion write on the request path (it's a single row update) so the redirect reflects truth; defer only other-recipient notifications, which are post-MVP anyway. Superseded the old bearer-token/HTTP-JSON latency analysis. `toggle_timer` occurrence-creation may still want a durable synchronous write since a lost write means a missed reminder; decide once timers are built.
 
 ## Datetimes: `utc_datetime_usec` for instants, `Time` for wall-clock
 
@@ -44,15 +64,15 @@ This needs an explicit override: Ecto's `:utc_datetime_usec` maps to `timestamp 
 
 Wall-clock time-of-day columns (`tasks.due_time`, `tasks.expiration_time`, `users.quiet_hours_start/end`) stay `Time` — they are not instants. They are interpreted in `households.timezone` when an occurrence is generated or a reminder is evaluated. ([Background](https://elixirforum.com/t/why-use-utc-datetime-over-naive-datetime-for-ecto/32532).)
 
-## API host domain: api.donemanager.com
+## Tag host domain
 
-`donemanager.com` is purchased. NFC tags bake in `https://api.donemanager.com/...` (see [api.md](api.md)) — a dedicated API subdomain so the web UI (`donemanager.com` / `app.donemanager.com`) and the backend host can move without rewriting tags. The apex domain is now the permanent dependency: it must be renewed for as long as any tag is in use.
+`donemanager.com` is purchased. Tags now bake the web-app link `https://app.donemanager.com/links/{id}`, not a separate API subdomain — superseding the earlier `api.donemanager.com` decision, since there is no JSON API and the tag opens the browser app directly. Whatever host the tag carries is the permanent dependency: it must resolve and the apex must stay renewed for as long as any tag is in use. The route is a server-controlled redirect, so the app can move behind that host without rewriting tags.
 
 ## Scheduling: Oban cron + reconcile loop
 
 Occurrence generation and reminders run as one Oban cron job every minute that reconciles from DB state (see [scheduling.md](scheduling.md)). Oban over a hand-rolled GenServer/Quantum because it's Postgres-backed (no Redis), survives restarts, guarantees single concurrent execution across deploy overlap, and is stable + well-represented in LLM training data. A GenServer only looks simpler — it pushes singleton/retry/restart correctness onto us, the kind of code a vibe-coder can't afford to debug.
 
-Oban is at-least-once, not exactly-once; effectively-once comes from idempotent reconciliation (reminders gated on recorded `reminder_sent` events). Worker is `unique` over non-terminal states with a single-slot queue, so an overrunning run skips the next tick instead of piling up — safe because the loop recomputes from state.
+Oban is at-least-once, not exactly-once; effectively-once comes from idempotent reconciliation (generation gated on "one open occurrence, create next on resolve"; reminders gated on recorded `notification_deliveries` rows). Worker is `unique` over non-terminal states with a single-slot queue, so an overrunning run skips the next tick instead of piling up — safe because the loop recomputes from state.
 
 ## Multitenancy: Phoenix Scopes
 
@@ -62,7 +82,7 @@ Use Phoenix 1.8 [Scopes](https://phoenix.hexdocs.pm/scopes.html) for household i
 
 Plain Phoenix contexts + generators, not Ash. The project is vibe-coded without carefully reading the code, so it depends on the generator being reliably correct — and vanilla Phoenix/Ecto is far more densely represented in LLM training data than Ash's fast-moving DSL. When generated code breaks, plain Elixir is readable top-to-bottom; Ash failures are framework-magic failures that require deep DSL knowledge to debug, which conflicts with not reading code. Ash also adds a large coupled dependency cluster, cutting against the upgrade-churn goal behind the Phoenix + LiveView choice.
 
-Ash's free GraphQL/JSON:API is real but discounted: productizing + mobile is ~20% likely, a JSON API is cheap to add to plain Phoenix later, and NFC ingestion is already a hand-written JSON endpoint. Its strongest fit — declarative multitenancy — is covered by Phoenix Scopes instead. Would flip if productizing were >50% likely, since retrofitting Ash later is a real rewrite.
+Ash's free GraphQL/JSON:API is real but discounted: productizing + mobile is ~20% likely, and a JSON API is cheap to add to plain Phoenix later. Its strongest fit — declarative multitenancy — is covered by Phoenix Scopes instead. Would flip if productizing were >50% likely, since retrofitting Ash later is a real rewrite.
 
 ## Stack: Phoenix + LiveView
 
@@ -72,6 +92,6 @@ Chosen for lowest long-term maintenance as a solo, low-attention project meant t
 - One dependency tree and one language, not a separate Python API tree plus an npm tree.
 - BEAM covers the moving parts this app needs in one runtime: Oban for occurrence generation and reminders, Phoenix PubSub for realtime web updates.
 
-FastAPI + React was considered. Its larger ecosystem buys nothing here — the integrations (Auth0/OIDC, Pushover HTTP, NFC HTTP ingestion, Postgres/Ecto) are all well covered in Elixir — while costing a second language and build chain, which cuts against the maintenance goal.
+FastAPI + React was considered. Its larger ecosystem buys nothing here — the integrations (Auth0/OIDC, Pushover HTTP, Postgres/Ecto) are all well covered in Elixir — while costing a second language and build chain, which cuts against the maintenance goal.
 
-Trade-offs accepted: smaller contributor pool; a stateful always-on server (no scale-to-zero); a future native mobile app would be less direct (mitigated — NFC ingestion is already a plain JSON endpoint).
+Trade-offs accepted: smaller contributor pool; a stateful always-on server (no scale-to-zero); a future native mobile app would be less direct (mitigated — a JSON API is cheap to add to plain Phoenix later).
