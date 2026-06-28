@@ -19,7 +19,7 @@ The constraint that a `scheduled` task must set `expiration_time` exists to keep
 One Oban cron job will run every minute and derive all work from DB state — it will not process a delta. Each run, for each active `scheduled`/`interval` task:
 
 1. **Generate.** Find the task's latest occurrence. If it is resolved (`completed_at` set or `expires_at < now`) and no later occurrence exists yet, create the next one. Bootstrap (a brand-new task with no occurrences) is the same path. The only per-type difference is the next `due_at`:
-   - `scheduled` — the next wall-clock calendar slot from the cadence, in `households.timezone`, with `expires_at` from `expiration_time`.
+   - `scheduled` — the next wall-clock `due_time` slot honoring `cadence_weekdays` (empty = every day), in `households.timezone`: today if `due_time` is still ahead of now *and* today is an allowed weekday, otherwise the next allowed weekday at `due_time`. `expires_at` is then derived from `expiration_time` by the midnight-crossing rule in [database.md](database.md). This is computed at task creation too — the first occurrence is a correct future slot, not `due_at = now` (the current eager shortcut).
    - `interval` — the resolved occurrence's `completed_at` plus `interval_minutes`, with `expires_at = null`.
 2. **Remind (post-MVP).** For each open, overdue occurrence and each notify recipient, send a reminder when `now - last reminder >= reminder_interval_minutes`. The Pushover sender reads the recipient's quiet hours and sets message priority. Record a `notification_deliveries` row; the next run reads it to avoid re-sending within the interval.
 

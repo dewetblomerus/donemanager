@@ -30,7 +30,7 @@ erDiagram
     users {
         uuid id PK
         string auth0_sub UK
-        string email
+        string email UK
         string display_name
         time quiet_hours_start
         time quiet_hours_end
