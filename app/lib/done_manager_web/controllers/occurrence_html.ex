@@ -42,9 +42,72 @@ defmodule DoneManagerWeb.OccurrenceHTML do
     """
   end
 
+  def scan_warning(assigns) do
+    ~H"""
+    <Layouts.execution flash={@flash}>
+      <div class="space-y-5">
+        <div class="rounded-lg bg-warning p-6 text-warning-content shadow-sm">
+          <p class="text-3xl font-bold leading-tight">Outside task hours</p>
+          <p class="mt-3 text-lg font-medium leading-7 opacity-90">
+            This tag is assigned, but it is not in an execution window right now.
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          <.warning_occurrence
+            :if={@context.previous}
+            title="Previous occurrence"
+            occurrence={@context.previous}
+            status={occurrence_status_label(@context.previous)}
+          />
+          <.warning_occurrence
+            :if={@context.next}
+            title="Next occurrence"
+            occurrence={@context.next}
+            status="Too early"
+          />
+        </div>
+      </div>
+    </Layouts.execution>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :occurrence, :map, required: true
+  attr :status, :string, required: true
+
+  defp warning_occurrence(assigns) do
+    ~H"""
+    <div class="rounded-lg bg-warning p-5 text-warning-content shadow-sm">
+      <p class="text-sm font-semibold uppercase opacity-75">{@title}</p>
+      <div class="mt-2 flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xl font-semibold leading-tight">{@occurrence.task.name}</p>
+          <p :if={@occurrence.completed_at} class="mt-2 text-sm font-medium leading-6 opacity-80">
+            Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
+          </p>
+        </div>
+        <p class="shrink-0 text-lg font-bold leading-tight">{@status}</p>
+      </div>
+    </div>
+    """
+  end
+
   defp status_label(%{completed_at: %DateTime{}}, :duplicate), do: "Already done"
   defp status_label(%{completed_at: %DateTime{}}, _outcome), do: "done"
   defp status_label(_occurrence, _outcome), do: "open"
+
+  defp occurrence_status_label(%{completed_at: %DateTime{}}), do: "done"
+
+  defp occurrence_status_label(%{expires_at: %DateTime{} = expires_at}) do
+    if DateTime.compare(expires_at, DateTime.utc_now()) == :lt do
+      "expired"
+    else
+      "open"
+    end
+  end
+
+  defp occurrence_status_label(_occurrence), do: "open"
 
   defp completed_at(%{completed_at: completed_at, task: %{household: %{timezone: timezone}}}) do
     Timezones.format(completed_at, timezone)

@@ -62,6 +62,50 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert redirected_to(conn) == ~p"/households"
     end
 
+    test "a scan outside task execution hours shows previous and next context without completing",
+         %{conn: conn} do
+      scope = owner_scope_fixture()
+      now = DateTime.utc_now()
+
+      previous_task =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => time_attr(now),
+          "expiration_time" => time_attr(now, 30),
+          "execute_window_start_time" => time_attr(now, -90),
+          "execute_window_end_time" => time_attr(now, -60)
+        })
+
+      next_task =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => time_attr(now, 60),
+          "expiration_time" => time_attr(now, 120),
+          "execute_window_start_time" => time_attr(now, 60),
+          "execute_window_end_time" => time_attr(now, 90)
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, previous_task)
+      bind_fixture(scope, link, next_task)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{link.id}")
+
+      assert conn.request_path == ~p"/links/#{link.id}"
+      html = html_response(conn, 200)
+      assert html =~ "Outside task hours"
+      assert html =~ "Previous occurrence"
+      assert html =~ "Dog breakfast"
+      assert html =~ "open"
+      assert html =~ "Next occurrence"
+      assert html =~ "Dog dinner"
+      assert html =~ "Too early"
+      assert html =~ "bg-warning"
+      refute Tasks.done?(Tasks.current_occurrence(previous_task))
+      refute Tasks.done?(Tasks.current_occurrence(next_task))
+    end
+
     test "requires authentication", %{conn: conn} do
       scope = owner_scope_fixture()
       link = link_fixture(scope)
@@ -69,5 +113,13 @@ defmodule DoneManagerWeb.LinkFlowTest do
       conn = get(conn, ~p"/links/#{link.id}")
       assert redirected_to(conn) == ~p"/"
     end
+  end
+
+  defp time_attr(%DateTime{} = now, offset_minutes \\ 0) do
+    now
+    |> DateTime.add(offset_minutes, :minute)
+    |> DateTime.to_time()
+    |> Time.truncate(:second)
+    |> Time.to_string()
   end
 end

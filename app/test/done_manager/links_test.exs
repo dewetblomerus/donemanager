@@ -95,5 +95,39 @@ defmodule DoneManager.LinksTest do
       assert {:ok, occ} = Links.resolve_execute(scope, link.id, evening)
       assert occ.task_id == dinner.id
     end
+
+    test "returns previous and next occurrence context outside task execution hours" do
+      scope = owner_scope_fixture()
+
+      breakfast =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => "08:00:00",
+          "expiration_time" => "11:00:00",
+          "execute_window_start_time" => "05:00",
+          "execute_window_end_time" => "12:00"
+        })
+
+      dinner =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => "18:00:00",
+          "expiration_time" => "21:00:00",
+          "execute_window_start_time" => "17:00",
+          "execute_window_end_time" => "23:00"
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, breakfast)
+      bind_fixture(scope, link, dinner)
+
+      afternoon = ~U[2026-06-28 13:00:00Z]
+
+      assert {:warning, context} = Links.resolve_execute(scope, link.id, afternoon)
+      assert context.previous.task_id == breakfast.id
+      assert context.previous.task.name == "Dog breakfast"
+      assert context.next.task_id == dinner.id
+      assert context.next.task.name == "Dog dinner"
+    end
   end
 end

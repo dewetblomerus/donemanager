@@ -1,8 +1,10 @@
 defmodule DoneManagerWeb.LinkController do
   @moduledoc """
   The stable tag contract: `GET /links/:id`. Resolves the tapped link to the
-  task occurrence that should be acted on and redirects to its execute action.
-  Carries no side effect itself — it only routes. See architecture/database.md.
+  task occurrence that should be acted on and redirects to its execute action
+  when executable. Outside execution hours, it stays on the link URL and renders
+  read-only previous/next context. Carries no side effect itself. See
+  architecture/database.md.
   """
 
   use DoneManagerWeb, :controller
@@ -13,6 +15,11 @@ defmodule DoneManagerWeb.LinkController do
     case Links.resolve_execute(conn.assigns.current_scope, id) do
       {:ok, occurrence} ->
         redirect(conn, to: ~p"/occurrences/#{occurrence.id}/execute")
+
+      {:warning, context} ->
+        conn
+        |> put_view(html: DoneManagerWeb.OccurrenceHTML)
+        |> render(:scan_warning, context: context)
 
       {:error, :not_found} ->
         conn

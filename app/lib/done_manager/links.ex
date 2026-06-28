@@ -21,6 +21,7 @@ defmodule DoneManager.Links do
   alias DoneManager.Repo
   alias DoneManager.Tasks
   alias DoneManager.Tasks.Task
+  alias DoneManager.Tasks.TaskOccurrence
 
   ## Links (web, scope-keyed)
 
@@ -117,9 +118,10 @@ defmodule DoneManager.Links do
   task among the link's bindings by execute window, and returns its current
   occurrence (generating one if needed).
 
-  Returns `{:ok, occurrence}`, `{:error, :not_found}` (no such link, or the user
-  is not a member of its household), or `{:error, :unassigned}` (the link drives
-  no task actionable right now).
+  Returns `{:ok, occurrence}`, `{:warning, context}` for a link with tasks but
+  no task actionable in the current execute window, `{:error, :not_found}` (no
+  such link, or the user is not a member of its household), or
+  `{:error, :unassigned}` (the link drives no active completable task).
   """
   def resolve_execute(%Scope{user: %User{id: user_id}}, link_id, now \\ DateTime.utc_now()) do
     case fetch_link_for_member(link_id, user_id) do
@@ -140,12 +142,13 @@ defmodule DoneManager.Links do
 
   defp resolve_actionable(%Link{} = link, now) do
     local_time = local_time(now, link.household.timezone)
+    tasks = actionable_tasks(link)
 
-    actionable_tasks(link)
+    tasks
     |> Enum.filter(&execute_window_contains?(&1, local_time))
     |> select_task_by_occurrence()
     |> case do
-      nil -> {:error, :unassigned}
+      nil -> outside_window_result(tasks, local_time)
       task -> {:ok, Tasks.current_or_create_occurrence(task)}
     end
   end
@@ -176,6 +179,38 @@ defmodule DoneManager.Links do
     |> elem(0)
   end
 
+  defp outside_window_result([], _local_time), do: {:error, :unassigned}
+
+  defp outside_window_result(tasks, local_time) do
+    tasks_with_occurrences =
+      Enum.map(tasks, fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
+
+    {:warning,
+     %{
+       previous: nearest_previous_occurrence(tasks_with_occurrences, local_time),
+       next: nearest_next_occurrence(tasks_with_occurrences, local_time)
+     }}
+  end
+
+  defp nearest_previous_occurrence(tasks_with_occurrences, local_time) do
+    tasks_with_occurrences
+    |> Enum.min_by(fn {task, _occurrence} ->
+      seconds_since_window_end(task, local_time)
+    end)
+    |> occurrence_from_pair()
+  end
+
+  defp nearest_next_occurrence(tasks_with_occurrences, local_time) do
+    tasks_with_occurrences
+    |> Enum.min_by(fn {task, _occurrence} ->
+      seconds_until_window_start(task, local_time)
+    end)
+    |> occurrence_from_pair()
+  end
+
+  defp occurrence_from_pair({_task, %TaskOccurrence{} = occurrence}),
+    do: Repo.preload(occurrence, [:completed_by, task: :household])
+
   defp local_time(%DateTime{} = utc, timezone) do
     case DateTime.shift_zone(utc, timezone) do
       {:ok, local} -> DateTime.to_time(local)
@@ -197,6 +232,24 @@ defmodule DoneManager.Links do
       Time.compare(time, from_time) in [:eq, :gt] and Time.compare(time, until_time) == :lt
     else
       Time.compare(time, from_time) in [:eq, :gt] or Time.compare(time, until_time) == :lt
+    end
+  end
+
+  defp seconds_since_window_end(%Task{execute_window_end_time: until_time}, time) do
+    positive_time_diff(time, until_time)
+  end
+
+  defp seconds_until_window_start(%Task{execute_window_start_time: from_time}, time) do
+    positive_time_diff(from_time, time)
+  end
+
+  defp positive_time_diff(later, earlier) do
+    seconds = Time.diff(later, earlier, :second)
+
+    if seconds >= 0 do
+      seconds
+    else
+      seconds + 24 * 60 * 60
     end
   end
 end
