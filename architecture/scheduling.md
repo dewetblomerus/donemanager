@@ -29,6 +29,8 @@ One Oban cron job will run every minute and derive all work from DB state — it
 
 Generating an occurrence should become the same operation — "ensure this task has a correct open occurrence" — whether it runs from the loop, from task creation, or from a task edit. **Creating or updating a task should upsert its single open occurrence**: insert it if missing, recompute `due_at`/`expires_at` if it exists, and **never touch resolved (completed/expired) occurrences** so history stays honest. So an edit to `due_time`/cadence/`expiration_time` (or `interval_minutes`) is immediately reflected in the open occurrence, and the loop and the editor share one code path. The `(task_id, due_at)` uniqueness guard keeps an edit and a concurrent loop tick from inserting twice.
 
+**Outstanding:** task *creation* computes the correct slot via `TaskOccurrence.schedule_attrs/3`, but `update_task` does **not** yet recompute the open occurrence — `current_or_create_occurrence` only creates one when none exists. Editing a task's `due_time`/cadence/`expiration_time` currently leaves the existing open occurrence's `due_at`/`expires_at` stale. Closing this means routing `update_task` through the same `schedule_attrs/3` upsert (skipping resolved occurrences).
+
 ## Missing occurrence at execute
 
 Once task creation makes the first scheduled occurrence correctly and the loop keeps one open, an execute should always find one. The two cases:
