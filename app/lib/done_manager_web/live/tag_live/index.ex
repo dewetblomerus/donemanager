@@ -19,6 +19,59 @@ defmodule DoneManagerWeb.TagLive.Index do
         </:actions>
       </.header>
 
+      <section
+        id="tag-registration-instructions"
+        class="mb-6 rounded-lg border border-base-300 bg-base-200/60 p-4 shadow-sm"
+      >
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="max-w-2xl">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-sparkles" class="size-5 text-primary" />
+              <h2 class="font-semibold">Add a tag</h2>
+            </div>
+            <p class="mt-2 text-sm text-base-content/70">
+              Write this URL to an NFC tag or call it from a scanning device. The UUIDv7 in the
+              path is the tag's unique id, and the first authenticated POST registers it here.
+            </p>
+          </div>
+
+          <button
+            id="copy-tag-registration-url"
+            type="button"
+            phx-click={JS.dispatch("dm:copy-to-clipboard", detail: %{text: @registration_url})}
+            class="btn btn-primary transition-transform duration-150 hover:-translate-y-0.5"
+          >
+            <.icon name="hero-clipboard-document" class="size-4" /> Copy URL
+          </button>
+        </div>
+
+        <label class="mt-4 block rounded-lg border border-base-300 bg-base-100 p-3">
+          <span class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            POST URL
+          </span>
+          <input
+            id="tag-registration-url"
+            type="url"
+            value={@registration_url}
+            readonly
+            class="mt-2 w-full bg-transparent text-sm outline-none"
+          />
+        </label>
+
+        <ol class="mt-4 grid gap-3 text-sm text-base-content/75 md:grid-cols-3">
+          <li class="rounded-lg border border-base-300 bg-base-100 p-3">
+            <span class="font-semibold text-base-content">1. Copy</span> the URL above.
+          </li>
+          <li class="rounded-lg border border-base-300 bg-base-100 p-3">
+            <span class="font-semibold text-base-content">2. Save</span> it on the tag or scanner.
+          </li>
+          <li class="rounded-lg border border-base-300 bg-base-100 p-3">
+            <span class="font-semibold text-base-content">3. POST</span>
+            with an API token bearer header.
+          </li>
+        </ol>
+      </section>
+
       <div id="tags" class="space-y-3">
         <div :for={tag <- @tags} id={"tag-#{tag.id}"} class="rounded-lg border border-base-300 p-4">
           <div class="flex items-start justify-between gap-4">
@@ -50,14 +103,13 @@ defmodule DoneManagerWeb.TagLive.Index do
           </p>
 
           <.form
-            :let={f}
-            for={tag_form(tag)}
+            for={tag_form(@tag_forms, tag)}
             id={"tag-form-#{tag.id}"}
             phx-submit="rename"
             phx-value-id={tag.id}
             class="mt-2 flex items-end gap-2"
           >
-            <.input field={f[:label]} type="text" placeholder="Name this tag" />
+            <.input field={tag_form(@tag_forms, tag)[:label]} type="text" placeholder="Name this tag" />
             <.button variant="primary" phx-disable-with="Saving...">Rename</.button>
           </.form>
         </div>
@@ -79,6 +131,7 @@ defmodule DoneManagerWeb.TagLive.Index do
      socket
      |> assign(:current_scope, scope)
      |> assign(:household, household)
+     |> assign_registration_url()
      |> load_tags(scope)}
   end
 
@@ -109,8 +162,13 @@ defmodule DoneManagerWeb.TagLive.Index do
     end
   end
 
-  defp load_tags(socket, scope),
-    do: assign(socket, :tags, Automation.list_tags_with_assignment(scope))
+  defp load_tags(socket, scope) do
+    tags = Automation.list_tags_with_assignment(scope)
+
+    socket
+    |> assign(:tags, tags)
+    |> assign(:tag_forms, Map.new(tags, &{&1.id, to_form(%{"label" => &1.label})}))
+  end
 
   defp assignment(tag) do
     case tag.automation_commands do
@@ -119,7 +177,14 @@ defmodule DoneManagerWeb.TagLive.Index do
     end
   end
 
-  defp tag_form(tag), do: to_form(%{"label" => tag.label})
+  defp tag_form(forms, tag), do: Map.fetch!(forms, tag.id)
+
+  defp assign_registration_url(socket) do
+    external_id = UUIDv7.generate()
+    path = ~p"/v1/tags/#{external_id}/scans"
+
+    assign(socket, :registration_url, DoneManagerWeb.Endpoint.url() <> path)
+  end
 
   defp delete_confirm(tag) do
     base = "Delete this tag? Scanning it again will re-register it."
