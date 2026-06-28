@@ -30,7 +30,7 @@ kill_signal = 'SIGTERM'
     soft_limit = 1000
 
 [[vm]]
-  memory = '256mb'
+  memory = '512mb'
   cpus = 1
-  memory_mb = 256
-  swap_size_mb = 512
+  memory_mb = 512
+  swap_size_mb = 256
