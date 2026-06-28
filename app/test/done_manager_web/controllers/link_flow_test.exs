@@ -62,7 +62,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert redirected_to(conn) == ~p"/households"
     end
 
-    test "a scan outside task execution hours shows previous and next context without completing",
+    test "a scan outside task execution hours redirects to inert status without completing",
          %{conn: conn} do
       scope = owner_scope_fixture()
       now = DateTime.utc_now()
@@ -92,7 +92,11 @@ defmodule DoneManagerWeb.LinkFlowTest do
       conn = log_in_user(conn, scope.user)
       conn = get(conn, ~p"/links/#{link.id}")
 
-      assert conn.request_path == ~p"/links/#{link.id}"
+      assert redirected_to(conn) == ~p"/links/#{link.id}/status"
+
+      conn = get(recycle(conn) |> log_in_user(scope.user), ~p"/links/#{link.id}/status")
+
+      assert conn.request_path == ~p"/links/#{link.id}/status"
       html = html_response(conn, 200)
       assert html =~ "Outside task hours"
       assert html =~ "Previous occurrence"
@@ -104,6 +108,31 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert html =~ "bg-warning"
       refute Tasks.done?(Tasks.current_occurrence(previous_task))
       refute Tasks.done?(Tasks.current_occurrence(next_task))
+    end
+
+    test "reloading link status during execution hours does not complete a task", %{conn: conn} do
+      scope = owner_scope_fixture()
+      now = DateTime.utc_now()
+
+      task =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => time_attr(now, -5),
+          "expiration_time" => time_attr(now, 5),
+          "execute_window_start_time" => time_attr(now, -5),
+          "execute_window_end_time" => time_attr(now, 5)
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{link.id}/status")
+
+      html = html_response(conn, 200)
+      assert html =~ "Link status"
+      assert html =~ "Dog breakfast"
+      refute Tasks.done?(Tasks.current_occurrence(task))
     end
 
     test "requires authentication", %{conn: conn} do

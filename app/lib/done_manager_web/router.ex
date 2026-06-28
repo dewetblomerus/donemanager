@@ -43,9 +43,11 @@ defmodule DoneManagerWeb.Router do
       live "/households/:id/links", LinkLive.Index, :index
     end
 
-    # The stable tag contract: GET /links/:id resolves and redirects to the
-    # occurrence execute action. /occurrences/:id/execute marks done; the show
-    # page is inert. See architecture/database.md.
+    # The stable tag contract: GET /links/:id resolves and redirects either to
+    # the occurrence execute action or the inert link status page.
+    # /occurrences/:id/execute marks done; the show page is inert. See
+    # architecture/database.md.
+    get "/links/:id/status", LinkController, :status
     get "/links/:id", LinkController, :execute
     get "/occurrences/:id/execute", OccurrenceController, :execute
     get "/occurrences/:id", OccurrenceController, :show

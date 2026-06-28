@@ -130,6 +130,25 @@ defmodule DoneManager.Links do
     end
   end
 
+  @doc """
+  Resolves the read-only status page for a link. This uses the same membership
+  authorization and task set as execute resolution, but never returns an
+  executable occurrence and never mutates task state.
+  """
+  def resolve_status(%Scope{user: %User{id: user_id}}, link_id, now \\ DateTime.utc_now()) do
+    case fetch_link_for_member(link_id, user_id) do
+      nil ->
+        {:error, :not_found}
+
+      link ->
+        local_time = local_time(now, link.household.timezone)
+
+        link
+        |> actionable_tasks()
+        |> status_result(local_time)
+    end
+  end
+
   defp fetch_link_for_member(link_id, user_id) do
     from(l in Link,
       join: m in HouseholdMembership,
@@ -182,11 +201,20 @@ defmodule DoneManager.Links do
   defp outside_window_result([], _local_time), do: {:error, :unassigned}
 
   defp outside_window_result(tasks, local_time) do
+    with {:ok, context} <- status_result(tasks, local_time) do
+      {:warning, context}
+    end
+  end
+
+  defp status_result([], _local_time), do: {:error, :unassigned}
+
+  defp status_result(tasks, local_time) do
     tasks_with_occurrences =
       Enum.map(tasks, fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
 
-    {:warning,
+    {:ok,
      %{
+       outside_execution_hours: Enum.all?(tasks, &(not execute_window_contains?(&1, local_time))),
        previous: nearest_previous_occurrence(tasks_with_occurrences, local_time),
        next: nearest_next_occurrence(tasks_with_occurrences, local_time)
      }}
@@ -236,11 +264,19 @@ defmodule DoneManager.Links do
   end
 
   defp seconds_since_window_end(%Task{execute_window_end_time: until_time}, time) do
-    positive_time_diff(time, until_time)
+    if until_time do
+      positive_time_diff(time, until_time)
+    else
+      0
+    end
   end
 
   defp seconds_until_window_start(%Task{execute_window_start_time: from_time}, time) do
-    positive_time_diff(from_time, time)
+    if from_time do
+      positive_time_diff(from_time, time)
+    else
+      0
+    end
   end
 
   defp positive_time_diff(later, earlier) do

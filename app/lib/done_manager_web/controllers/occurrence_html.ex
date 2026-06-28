@@ -42,13 +42,16 @@ defmodule DoneManagerWeb.OccurrenceHTML do
     """
   end
 
-  def scan_warning(assigns) do
+  def link_status(assigns) do
     ~H"""
     <Layouts.execution flash={@flash}>
       <div class="space-y-5">
         <div class="rounded-lg bg-warning p-6 text-warning-content shadow-sm">
-          <p class="text-3xl font-bold leading-tight">Outside task hours</p>
-          <p class="mt-3 text-lg font-medium leading-7 opacity-90">
+          <p class="text-3xl font-bold leading-tight">{status_page_title(@context)}</p>
+          <p
+            :if={@context.outside_execution_hours}
+            class="mt-3 text-lg font-medium leading-7 opacity-90"
+          >
             This tag is assigned, but it is not in an execution window right now.
           </p>
         </div>
@@ -71,6 +74,8 @@ defmodule DoneManagerWeb.OccurrenceHTML do
     </Layouts.execution>
     """
   end
+
+  def scan_warning(assigns), do: link_status(assigns)
 
   attr :title, :string, required: true
   attr :occurrence, :map, required: true
@@ -96,6 +101,9 @@ defmodule DoneManagerWeb.OccurrenceHTML do
   defp status_label(%{completed_at: %DateTime{}}, :duplicate), do: "Already done"
   defp status_label(%{completed_at: %DateTime{}}, _outcome), do: "done"
   defp status_label(_occurrence, _outcome), do: "open"
+
+  defp status_page_title(%{outside_execution_hours: true}), do: "Outside task hours"
+  defp status_page_title(_context), do: "Link status"
 
   defp occurrence_status_label(%{completed_at: %DateTime{}}), do: "done"
 
