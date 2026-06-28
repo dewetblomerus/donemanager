@@ -10,7 +10,6 @@ defmodule DoneManager.TasksFixtures do
       Enum.into(attrs, %{
         "name" => "Spot breakfast",
         "task_type" => "scheduled",
-        "cadence_frequency" => "daily",
         "due_time" => "08:00:00",
         "expiration_time" => "11:00:00"
       })

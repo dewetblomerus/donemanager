@@ -58,6 +58,28 @@ defmodule DoneManager.Links do
     |> Repo.insert()
   end
 
+  @doc """
+  Claims a never-seen UUIDv7 tag URL for the signed-in user's only household.
+
+  This supports pre-written NFC tags. The ID must be a valid UUIDv7, must not
+  already exist anywhere, and the user must belong to exactly one household.
+  `Repo.one/1` intentionally raises if the user has multiple households.
+  """
+  def claim_new_link_for_only_household(%Scope{user: %User{id: user_id}} = scope, id) do
+    with true <- uuidv7?(id),
+         nil <- Repo.get(Link, id),
+         %Household{} = household <- only_household_for_user!(user_id) do
+      scope
+      |> Scope.put_household(household)
+      |> create_link_with_id(id)
+    else
+      false -> {:error, :invalid_id}
+      %Link{} -> {:error, :not_unique}
+      nil -> {:error, :no_household}
+      {:error, _reason} = error -> error
+    end
+  end
+
   @doc "Updates a link (its label/active) in the scope's household."
   def update_link(%Scope{household: %Household{id: household_id}}, %Link{} = link, attrs) do
     if link.household_id == household_id do
@@ -150,6 +172,12 @@ defmodule DoneManager.Links do
   end
 
   defp fetch_link_for_member(link_id, user_id) do
+    if uuidv7?(link_id) do
+      fetch_uuidv7_link_for_member(link_id, user_id)
+    end
+  end
+
+  defp fetch_uuidv7_link_for_member(link_id, user_id) do
     from(l in Link,
       join: m in HouseholdMembership,
       on: m.household_id == l.household_id,
@@ -158,6 +186,30 @@ defmodule DoneManager.Links do
     )
     |> Repo.one()
   end
+
+  defp create_link_with_id(%Scope{household: %Household{id: household_id}}, id) do
+    %Link{id: id, household_id: household_id}
+    |> Link.changeset(%{})
+    |> Repo.insert()
+  end
+
+  defp only_household_for_user!(user_id) do
+    from(h in Household,
+      join: m in HouseholdMembership,
+      on: m.household_id == h.id,
+      where: m.user_id == ^user_id
+    )
+    |> Repo.one()
+  end
+
+  defp uuidv7?(id) when is_binary(id) do
+    Regex.match?(
+      ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i,
+      id
+    )
+  end
+
+  defp uuidv7?(_id), do: false
 
   defp resolve_actionable(%Link{} = link, now) do
     local_time = local_time(now, link.household.timezone)
@@ -246,14 +298,20 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp execute_window_contains?(
-         %Task{execute_window_start_time: nil, execute_window_end_time: nil},
-         _time
-       ),
-       do: true
+  # The execute window is [valid_from, expiration_time): start-inclusive,
+  # end-exclusive, crossing midnight when expiration is at or before valid_from.
+  # A null bound is open on that side (null valid_from = from start of day; null
+  # expiration = no end, e.g. interval tasks tappable until done).
+  defp execute_window_contains?(%Task{valid_from: nil, expiration_time: nil}, _time), do: true
+
+  defp execute_window_contains?(%Task{valid_from: nil, expiration_time: until_time}, time),
+    do: Time.compare(time, until_time) == :lt
+
+  defp execute_window_contains?(%Task{valid_from: from_time, expiration_time: nil}, time),
+    do: Time.compare(time, from_time) in [:eq, :gt]
 
   defp execute_window_contains?(
-         %Task{execute_window_start_time: from_time, execute_window_end_time: until_time},
+         %Task{valid_from: from_time, expiration_time: until_time},
          time
        ) do
     if Time.compare(from_time, until_time) == :lt do
@@ -263,7 +321,7 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp seconds_since_window_end(%Task{execute_window_end_time: until_time}, time) do
+  defp seconds_since_window_end(%Task{expiration_time: until_time}, time) do
     if until_time do
       positive_time_diff(time, until_time)
     else
@@ -271,7 +329,7 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp seconds_until_window_start(%Task{execute_window_start_time: from_time}, time) do
+  defp seconds_until_window_start(%Task{valid_from: from_time}, time) do
     if from_time do
       positive_time_diff(from_time, time)
     else

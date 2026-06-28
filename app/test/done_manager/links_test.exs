@@ -40,7 +40,8 @@ defmodule DoneManager.LinksTest do
       link = link_fixture(scope)
       bind_fixture(scope, link, task)
 
-      assert {:ok, occurrence} = Links.resolve_execute(scope, link.id)
+      # 09:00 falls inside the default task's [valid_from 00:00, expiration 11:00) window.
+      assert {:ok, occurrence} = Links.resolve_execute(scope, link.id, ~U[2026-06-28 09:00:00Z])
       assert occurrence.task_id == task.id
     end
 
@@ -69,8 +70,7 @@ defmodule DoneManager.LinksTest do
           "name" => "Dog breakfast",
           "due_time" => "08:00:00",
           "expiration_time" => "11:00:00",
-          "execute_window_start_time" => "05:00",
-          "execute_window_end_time" => "12:00"
+          "valid_from" => "05:00"
         })
 
       dinner =
@@ -78,8 +78,7 @@ defmodule DoneManager.LinksTest do
           "name" => "Dog dinner",
           "due_time" => "18:00:00",
           "expiration_time" => "21:00:00",
-          "execute_window_start_time" => "12:00",
-          "execute_window_end_time" => "23:00"
+          "valid_from" => "12:00"
         })
 
       link = link_fixture(scope)
@@ -104,8 +103,7 @@ defmodule DoneManager.LinksTest do
           "name" => "Dog breakfast",
           "due_time" => "08:00:00",
           "expiration_time" => "11:00:00",
-          "execute_window_start_time" => "05:00",
-          "execute_window_end_time" => "12:00"
+          "valid_from" => "05:00"
         })
 
       dinner =
@@ -113,8 +111,7 @@ defmodule DoneManager.LinksTest do
           "name" => "Dog dinner",
           "due_time" => "18:00:00",
           "expiration_time" => "21:00:00",
-          "execute_window_start_time" => "17:00",
-          "execute_window_end_time" => "23:00"
+          "valid_from" => "17:00"
         })
 
       link = link_fixture(scope)

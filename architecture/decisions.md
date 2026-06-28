@@ -2,6 +2,17 @@
 
 Informal running log of choices and why. Newest first.
 
+## Execute window collapses into `expiration_time`; start renamed `valid_from`
+
+The execute window had its own end (`execute_window_end_time`) separate from `expiration_time`. In practice that created a confusing dead state: a tap after the window closed but before the occurrence expired showed "open" on the phone yet refused to complete. The two boundaries are now one.
+
+- **Dropped `execute_window_end_time`.** `expiration_time` is the single end — both the latest tappable moment and (via `expires_at`) when the occurrence resolves. An occurrence is executable iff `valid_from <= now < expiration_time`.
+- **Renamed `execute_window_start_time` → `valid_from`** — a name a user can read without a glossary. Still nullable (null = from start of day). `due_time` stays distinct: it drives reminders/display, `valid_from` the earliest execute.
+- **`interval` tasks** keep `expiration_time = null`, so they have no execute end — tappable until done, as before.
+- **Routing is unchanged in shape:** among a multi-task link's open occurrences, pick those whose `[valid_from, expiration_time)` contains now, sort by `due_at`, act on the first; none match → `/links/:id/status`. Since `expires_at < now` already means "ignored," the first-due sort needs no special case.
+- **V1 stance: expiry resolves immediately — a missed `scheduled` occurrence is gone, not completable even on web.** This is the whole point of the simplification (the scan must not claim "open" when it isn't). Late web-completion can return later as a status-page affordance with no schema change.
+- The old pair constraints (`tasks_execute_window_pair_required`, `tasks_execute_window_not_empty`) are dropped — a single optional column needs neither.
+
 ## One-time pre-launch migration reset
 
 The link redesign was applied by **editing the existing migrations in place** rather than adding new ones, and the prod DB is dropped before the next deploy. Safe only because we are pre-launch with no real data: every environment starts fresh, so the migration history reads as a clean description of the destination instead of a rename/drop archaeology trail. This is a one-time move — the moment a real user exists in prod, migrations are additive-only again.
@@ -15,7 +26,7 @@ Consequences, all reflected in [database.md](database.md):
 - **Renamed** `nfc_tags` → `links` (slimmed: no `external_id`, no `last_scanned_*`) and `automation_commands` → `link_tasks` (a plain `(household_id, link_id, task_id)` join — no `label`, no `active`; deactivate by deleting the row).
 - **Completion status moves onto `task_occurrences`** (`completed_at`, `completed_by_id`), reversing the old "status derived from `task_events`, never stored" rule — that rule depended on the dropped table.
 - **The tag URL `GET /links/{id}` resolves and redirects to `GET /occurrences/{id}/execute`, which marks done and renders the occurrence.** Execution is occurrence-idempotent — the id pins one occurrence, so reload / double-tap just re-renders "done." A `GET` with a side effect is safe because it's auth-gated and idempotent. The old "opening a link does nothing, only the button press acts" rule was for unauthenticated remote ack and is no longer needed — the session is the gate. Deferred to Undo: the Undo action (a `POST`) will redirect to the inert `/occurrences/{id}` show page so a reload can't re-fire after an undo; the stable `/links/{id}` tag contract is unaffected.
-- `tasks.scan_window_*` renamed to `tasks.execute_window_*`.
+- `tasks.scan_window_*` renamed to `tasks.execute_window_*` (later collapsed — see top entry: `execute_window_start_time` → `valid_from`, `execute_window_end_time` dropped in favor of `expiration_time`).
 - `api.md` is deleted — there's no JSON API now; the one stable contract (the tag URL) lives in the `database.md` `links` notes.
 - **MVP is routine management only — no Pushover send path.** Notifications (`pushover_destinations`, `notification_deliveries`, reminders, quiet hours) are post-MVP.
 

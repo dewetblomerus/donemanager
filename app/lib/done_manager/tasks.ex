@@ -45,18 +45,19 @@ defmodule DoneManager.Tasks do
 
   @doc """
   Creates a task in the scope's current household and eagerly generates its
-  current occurrence, so the slice has something an execute can complete without
-  a scheduler.
+  current occurrence, with `due_at`/`expires_at` computed in the household
+  timezone (see architecture/scheduling.md), so an execute has something to act
+  on before the reconcile loop exists.
   """
-  def create_task(%Scope{household: %Household{id: household_id}}, attrs) do
+  def create_task(%Scope{household: %Household{} = household}, attrs) do
     Repo.transaction(fn ->
       task =
-        %Task{household_id: household_id}
+        %Task{household_id: household.id}
         |> Task.changeset(attrs)
         |> Repo.insert()
         |> unwrap()
 
-      task |> insert_occurrence() |> unwrap()
+      task |> insert_occurrence(household.timezone) |> unwrap()
       task
     end)
   end
@@ -99,7 +100,7 @@ defmodule DoneManager.Tasks do
   """
   def current_or_create_occurrence(%Task{} = task) do
     case current_occurrence(task) do
-      nil -> task |> insert_occurrence() |> unwrap_occurrence()
+      nil -> task |> insert_occurrence(task_timezone(task)) |> unwrap_occurrence()
       occurrence -> occurrence
     end
   end
@@ -164,11 +165,15 @@ defmodule DoneManager.Tasks do
 
   def complete_via_web(_scope, _task), do: {:error, :unauthorized}
 
-  defp insert_occurrence(%Task{id: task_id}) do
-    %TaskOccurrence{task_id: task_id}
-    |> TaskOccurrence.changeset(%{due_at: DateTime.utc_now()})
+  defp insert_occurrence(%Task{} = task, timezone) do
+    task
+    |> Ecto.build_assoc(:occurrences)
+    |> TaskOccurrence.changeset(TaskOccurrence.schedule_attrs(task, timezone))
     |> Repo.insert()
   end
+
+  defp task_timezone(%Task{household: %Household{timezone: timezone}}), do: timezone
+  defp task_timezone(%Task{} = task), do: Repo.preload(task, :household).household.timezone
 
   defp unwrap_occurrence({:ok, occurrence}), do: Repo.preload(occurrence, :completed_by)
 

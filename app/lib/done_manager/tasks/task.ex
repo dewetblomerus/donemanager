@@ -17,21 +17,17 @@ defmodule DoneManager.Tasks.Task do
   alias DoneManager.Tasks.TaskOccurrence
 
   @task_types ~w(scheduled interval timer)
-  @frequencies ~w(daily weekly)
   @weekdays ~w(mo tu we th fr sa su)
 
   schema "tasks" do
     field :name, :string
     field :description, :string
     field :task_type, :string
-    field :cadence_frequency, :string
     field :cadence_weekdays, {:array, :string}, default: []
-    field :cadence_interval_minutes, :integer
+    field :interval_minutes, :integer
     field :due_time, :time
     field :expiration_time, :time
-    field :execute_window_start_time, :time
-    field :execute_window_end_time, :time
-    field :timer_minutes, :integer
+    field :valid_from, :time
     field :reminder_interval_minutes, :integer
     field :active, :boolean, default: true
 
@@ -48,25 +44,18 @@ defmodule DoneManager.Tasks.Task do
       :name,
       :description,
       :task_type,
-      :cadence_frequency,
       :cadence_weekdays,
-      :cadence_interval_minutes,
+      :interval_minutes,
       :due_time,
       :expiration_time,
-      :execute_window_start_time,
-      :execute_window_end_time,
-      :timer_minutes,
+      :valid_from,
       :reminder_interval_minutes,
       :active
     ])
     |> validate_required([:name, :task_type])
     |> validate_inclusion(:task_type, @task_types)
-    |> validate_number(:cadence_interval_minutes, greater_than: 0)
-    |> validate_number(:timer_minutes, greater_than: 0)
+    |> validate_number(:interval_minutes, greater_than: 0)
     |> validate_number(:reminder_interval_minutes, greater_than: 0)
-    |> validate_execute_window()
-    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_pair_required)
-    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_not_empty)
     |> validate_by_type()
   end
 
@@ -77,44 +66,23 @@ defmodule DoneManager.Tasks.Task do
     case get_field(changeset, :task_type) do
       "scheduled" ->
         changeset
-        |> clear_fields([:cadence_interval_minutes, :timer_minutes])
+        |> clear_fields([:interval_minutes])
         # A scheduled task must expire so a missed slot resolves and the next
         # one is generated (see architecture/database.md).
-        |> validate_required([:cadence_frequency, :due_time, :expiration_time])
-        |> validate_inclusion(:cadence_frequency, @frequencies)
+        |> validate_required([:due_time, :expiration_time])
         |> validate_subset(:cadence_weekdays, @weekdays)
-        |> validate_weekdays()
 
       "interval" ->
         changeset
-        |> clear_fields([:cadence_frequency, :due_time, :expiration_time, :timer_minutes])
+        |> clear_fields([:due_time, :expiration_time])
         |> put_change(:cadence_weekdays, [])
-        |> validate_required([:cadence_interval_minutes])
+        |> validate_required([:interval_minutes])
 
       "timer" ->
         changeset
-        |> clear_fields([
-          :cadence_frequency,
-          :cadence_interval_minutes,
-          :due_time,
-          :expiration_time
-        ])
+        |> clear_fields([:due_time, :expiration_time])
         |> put_change(:cadence_weekdays, [])
-        |> validate_required([:timer_minutes])
-
-      _ ->
-        changeset
-    end
-  end
-
-  # Weekly needs at least one weekday; daily must have none.
-  defp validate_weekdays(changeset) do
-    case {get_field(changeset, :cadence_frequency), get_field(changeset, :cadence_weekdays)} do
-      {"weekly", []} ->
-        add_error(changeset, :cadence_weekdays, "pick at least one day for a weekly task")
-
-      {"daily", days} when days != [] ->
-        put_change(changeset, :cadence_weekdays, [])
+        |> validate_required([:interval_minutes])
 
       _ ->
         changeset
@@ -124,29 +92,10 @@ defmodule DoneManager.Tasks.Task do
   defp clear_fields(changeset, fields),
     do: Enum.reduce(fields, changeset, &put_change(&2, &1, nil))
 
-  defp validate_execute_window(changeset) do
-    start_time = get_field(changeset, :execute_window_start_time)
-    end_time = get_field(changeset, :execute_window_end_time)
-
-    cond do
-      is_nil(start_time) and is_nil(end_time) ->
-        changeset
-
-      is_nil(start_time) or is_nil(end_time) ->
-        add_error(changeset, :execute_window_end_time, "must be set with execute window start")
-
-      Time.compare(start_time, end_time) == :eq ->
-        add_error(changeset, :execute_window_end_time, "must differ from execute window start")
-
-      true ->
-        changeset
-    end
-  end
-
   # HTML <input type="time"> submits "HH:MM"; Ecto's :time cast wants seconds.
   defp normalize_times(attrs) when is_map(attrs) do
     Enum.reduce(
-      ["due_time", "expiration_time", "execute_window_start_time", "execute_window_end_time"],
+      ["due_time", "expiration_time", "valid_from"],
       attrs,
       fn key, acc ->
         case Map.get(acc, key) do
@@ -160,6 +109,5 @@ defmodule DoneManager.Tasks.Task do
   defp normalize_times(attrs), do: attrs
 
   def task_types, do: @task_types
-  def frequencies, do: @frequencies
   def weekdays, do: @weekdays
 end

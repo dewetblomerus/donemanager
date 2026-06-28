@@ -40,16 +40,17 @@ defmodule DoneManagerWeb.TaskLive.Show do
 
       <.list>
         <:item title="Type">{@task.task_type}</:item>
-        <:item :if={@task.cadence_frequency} title="Frequency">{@task.cadence_frequency}</:item>
-        <:item :if={@task.cadence_weekdays != []} title="Weekdays">
-          {Enum.join(@task.cadence_weekdays, ", ")}
+        <:item :if={@task.task_type == "scheduled"} title="Weekdays">
+          {scheduled_weekdays(@task.cadence_weekdays)}
         </:item>
-        <:item :if={@task.cadence_interval_minutes} title="Every">
-          {@task.cadence_interval_minutes} min
+        <:item :if={@task.task_type == "interval" && @task.interval_minutes} title="Every">
+          {@task.interval_minutes} min
         </:item>
         <:item :if={@task.due_time} title="Due time">{@task.due_time}</:item>
         <:item :if={@task.expiration_time} title="Expires">{@task.expiration_time}</:item>
-        <:item :if={@task.timer_minutes} title="Timer">{@task.timer_minutes} min</:item>
+        <:item :if={@task.task_type == "timer" && @task.interval_minutes} title="Timer">
+          {@task.interval_minutes} min
+        </:item>
         <:item :if={@task.reminder_interval_minutes} title="Reminder every">
           {@task.reminder_interval_minutes} min
         </:item>
@@ -98,12 +99,16 @@ defmodule DoneManagerWeb.TaskLive.Show do
   defp completed_by(%{completed_by: nil}), do: "a household member"
   defp completed_by(%{completed_by: user}), do: user.display_name || user.email
 
-  defp execute_window(%{execute_window_start_time: nil, execute_window_end_time: nil}),
-    do: "All day"
+  defp execute_window(%{valid_from: nil, expiration_time: nil}), do: "All day"
 
   defp execute_window(task) do
-    "#{format_time(task.execute_window_start_time)}-#{format_time(task.execute_window_end_time)}"
+    from = if task.valid_from, do: format_time(task.valid_from), else: "00:00"
+    until = if task.expiration_time, do: format_time(task.expiration_time), else: "…"
+    "#{from}-#{until}"
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
+
+  defp scheduled_weekdays([]), do: "Every day"
+  defp scheduled_weekdays(days), do: Enum.join(days, ", ")
 end

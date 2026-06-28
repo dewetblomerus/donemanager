@@ -11,7 +11,6 @@ defmodule DoneManagerWeb.TaskLive.Form do
     {"Every-so-often — due if not done in a while (e.g. let the dog out)", "interval"},
     {"Timer — on-demand countdown started by a tap (e.g. move the laundry)", "timer"}
   ]
-  @frequency_options [{"Daily", "daily"}, {"Weekly", "weekly"}]
   @weekday_options [
     {"Monday", "mo"},
     {"Tuesday", "tu"},
@@ -42,17 +41,9 @@ defmodule DoneManagerWeb.TaskLive.Form do
         <%= case @task_type do %>
           <% "scheduled" -> %>
             <.input
-              field={@form[:cadence_frequency]}
-              type="select"
-              label="Frequency"
-              prompt="Choose…"
-              options={@frequency_options}
-            />
-            <.input
-              :if={@frequency == "weekly"}
               field={@form[:cadence_weekdays]}
               type="select"
-              label="Weekdays"
+              label="Weekdays (blank = every day)"
               multiple
               options={@weekday_options}
             />
@@ -60,16 +51,16 @@ defmodule DoneManagerWeb.TaskLive.Form do
             <.input field={@form[:expiration_time]} type="time" label="Expiration time (optional)" />
           <% "interval" -> %>
             <.input
-              field={@form[:cadence_interval_minutes]}
+              field={@form[:interval_minutes]}
               type="number"
               label="Interval in minutes (e.g. 180 for every 3 hours)"
               min="1"
             />
           <% "timer" -> %>
             <.input
-              field={@form[:timer_minutes]}
+              field={@form[:interval_minutes]}
               type="number"
-              label="Timer minutes (how long the countdown runs after a tap)"
+              label="Countdown minutes (how long the timer runs after a tap)"
               min="1"
             />
           <% _ -> %>
@@ -81,18 +72,11 @@ defmodule DoneManagerWeb.TaskLive.Form do
           label="Reminder interval in minutes (optional; blank = single reminder)"
           min="1"
         />
-        <div class="grid gap-4 sm:grid-cols-2">
-          <.input
-            field={@form[:execute_window_start_time]}
-            type="time"
-            label="Execute window starts (optional)"
-          />
-          <.input
-            field={@form[:execute_window_end_time]}
-            type="time"
-            label="Execute window ends (optional)"
-          />
-        </div>
+        <.input
+          field={@form[:valid_from]}
+          type="time"
+          label="Valid from (optional; blank = from start of day). Window ends at the expiration time."
+        />
         <.input field={@form[:active]} type="checkbox" label="Active" />
 
         <footer class="mt-4 flex gap-2">
@@ -109,7 +93,6 @@ defmodule DoneManagerWeb.TaskLive.Form do
     socket =
       socket
       |> assign(:type_options, @type_options)
-      |> assign(:frequency_options, @frequency_options)
       |> assign(:weekday_options, @weekday_options)
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}
@@ -127,7 +110,6 @@ defmodule DoneManagerWeb.TaskLive.Form do
     |> assign(:page_title, "New task in #{household.name}")
     |> assign(:cancel_path, ~p"/households/#{household}/tasks")
     |> assign(:task_type, nil)
-    |> assign(:frequency, nil)
     |> assign(:form, to_form(Tasks.change_task()))
   end
 
@@ -144,7 +126,6 @@ defmodule DoneManagerWeb.TaskLive.Form do
     |> assign(:page_title, "Edit #{task.name}")
     |> assign(:cancel_path, ~p"/tasks/#{task}")
     |> assign(:task_type, task.task_type)
-    |> assign(:frequency, task.cadence_frequency)
     |> assign(:form, to_form(Tasks.change_task(task)))
   end
 
@@ -155,7 +136,6 @@ defmodule DoneManagerWeb.TaskLive.Form do
     {:noreply,
      socket
      |> assign(:task_type, params["task_type"])
-     |> assign(:frequency, params["cadence_frequency"])
      |> assign(:form, to_form(changeset, action: :validate))}
   end
 

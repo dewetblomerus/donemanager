@@ -14,7 +14,6 @@ defmodule DoneManager.TasksTest do
                Tasks.create_task(scope, %{
                  "name" => "Spot breakfast",
                  "task_type" => "scheduled",
-                 "cadence_frequency" => "daily",
                  "due_time" => "08:00:00",
                  "expiration_time" => "11:00:00"
                })
@@ -41,30 +40,43 @@ defmodule DoneManager.TasksTest do
   end
 
   describe "create_task/2 conditional validation" do
-    test "a scheduled task needs a frequency, due time, and expiration" do
+    test "a scheduled task needs due time and expiration" do
       scope = owner_scope_fixture()
 
       assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Feed", "task_type" => "scheduled"})
 
-      assert "can't be blank" in errors_on(changeset).cadence_frequency
       assert "can't be blank" in errors_on(changeset).due_time
       assert "can't be blank" in errors_on(changeset).expiration_time
     end
 
-    test "a weekly task needs at least one weekday" do
+    test "a scheduled task may use blank weekdays for every day" do
       scope = owner_scope_fixture()
 
-      assert {:error, changeset} =
+      assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Bins",
                  "task_type" => "scheduled",
-                 "cadence_frequency" => "weekly",
                  "due_time" => "18:00:00",
                  "expiration_time" => "20:00:00"
                })
 
-      assert errors_on(changeset).cadence_weekdays != []
+      assert task.cadence_weekdays == []
+    end
+
+    test "a scheduled task may restrict to selected weekdays" do
+      scope = owner_scope_fixture()
+
+      assert {:ok, task} =
+               Tasks.create_task(scope, %{
+                 "name" => "Bins",
+                 "task_type" => "scheduled",
+                 "cadence_weekdays" => ["tu"],
+                 "due_time" => "18:00:00",
+                 "expiration_time" => "20:00:00"
+               })
+
+      assert task.cadence_weekdays == ["tu"]
     end
 
     test "an interval task needs an interval and ignores schedule fields" do
@@ -73,39 +85,37 @@ defmodule DoneManager.TasksTest do
       assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Dog out", "task_type" => "interval"})
 
-      assert "can't be blank" in errors_on(changeset).cadence_interval_minutes
+      assert "can't be blank" in errors_on(changeset).interval_minutes
 
       assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Dog out",
                  "task_type" => "interval",
-                 "cadence_interval_minutes" => "180",
+                 "interval_minutes" => "180",
                  "due_time" => "09:00:00"
                })
 
-      assert task.cadence_interval_minutes == 180
+      assert task.interval_minutes == 180
       # Schedule-only fields are cleared for an interval task.
       assert task.due_time == nil
     end
 
-    test "a timer task needs timer minutes and carries no cadence" do
+    test "a timer task needs interval minutes and carries no cadence" do
       scope = owner_scope_fixture()
 
       assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Laundry", "task_type" => "timer"})
 
-      assert "can't be blank" in errors_on(changeset).timer_minutes
+      assert "can't be blank" in errors_on(changeset).interval_minutes
 
       assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Laundry",
                  "task_type" => "timer",
-                 "timer_minutes" => "60"
+                 "interval_minutes" => "60"
                })
 
-      assert task.timer_minutes == 60
-      assert task.cadence_frequency == nil
-      assert task.cadence_interval_minutes == nil
+      assert task.interval_minutes == 60
     end
   end
 

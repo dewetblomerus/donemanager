@@ -38,7 +38,6 @@ Testable outcome: a signed-in member taps `/links/{id}`, gets redirected to `/oc
 ## Deferred to later stages
 
 - Generation: the Oban reconcile loop and the single-invariant occurrence lifecycle (see [scheduling.md](scheduling.md)). Until then, the first occurrence is created eagerly.
-- `scheduled` and `interval` task types: the slice uses one task with an eagerly-created occurrence; recurrence comes with the reconcile loop.
+- Recurring occurrence semantics: the slice validates `scheduled` and `interval` task types and creates one eager occurrence; recurrence comes with the reconcile loop.
 - Notifications: `pushover_destinations`, `notification_deliveries`, quiet hours, and reminders.
-- `timer` task type and the `toggle_timer` behaviour.
-- Multi-task links and execute-window routing.
+- Timer execution and the `toggle_timer` behaviour.

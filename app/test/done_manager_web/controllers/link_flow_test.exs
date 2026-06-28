@@ -5,12 +5,15 @@ defmodule DoneManagerWeb.LinkFlowTest do
   import DoneManager.LinksFixtures
   import DoneManager.TasksFixtures
 
+  alias DoneManager.Links.Link
+  alias DoneManager.Repo
   alias DoneManager.Tasks
 
   describe "tap → execute flow" do
     test "a bound link redirects to the occurrence execute, which completes it", %{conn: conn} do
       scope = owner_scope_fixture()
-      task = task_fixture(scope)
+      # interval task: no expiration, tappable any wall-clock time the suite runs.
+      task = task_fixture(scope, %{"task_type" => "interval", "interval_minutes" => 180})
       link = link_fixture(scope)
       bind_fixture(scope, link, task)
 
@@ -62,6 +65,45 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert redirected_to(conn) == ~p"/households"
     end
 
+    test "a new valid UUIDv7 link is claimed for the user's only household", %{conn: conn} do
+      scope = owner_scope_fixture()
+      id = "019f1084-c889-7a9b-972f-037c1fcf88f7"
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{id}")
+
+      assert redirected_to(conn) == ~p"/households/#{scope.household.id}/links"
+
+      link = Repo.get!(Link, id)
+      assert link.household_id == scope.household.id
+      assert link.label == nil
+      assert link.active
+    end
+
+    test "an invalid new link id is not claimed", %{conn: conn} do
+      scope = owner_scope_fixture()
+      id = "not-a-uuidv7"
+      link_count = Repo.aggregate(Link, :count)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{id}")
+
+      assert redirected_to(conn) == ~p"/households"
+      assert Repo.aggregate(Link, :count) == link_count
+    end
+
+    test "a link id already owned by another household is not claimed", %{conn: conn} do
+      owner_scope = owner_scope_fixture()
+      link = link_fixture(owner_scope)
+      scanner_scope = owner_scope_fixture()
+
+      conn = log_in_user(conn, scanner_scope.user)
+      conn = get(conn, ~p"/links/#{link.id}")
+
+      assert redirected_to(conn) == ~p"/households"
+      assert Repo.get!(Link, link.id).household_id == owner_scope.household.id
+    end
+
     test "a scan outside task execution hours redirects to inert status without completing",
          %{conn: conn} do
       scope = owner_scope_fixture()
@@ -70,10 +112,9 @@ defmodule DoneManagerWeb.LinkFlowTest do
       previous_task =
         task_fixture(scope, %{
           "name" => "Dog breakfast",
-          "due_time" => time_attr(now),
-          "expiration_time" => time_attr(now, 30),
-          "execute_window_start_time" => time_attr(now, -90),
-          "execute_window_end_time" => time_attr(now, -60)
+          "due_time" => time_attr(now, -90),
+          "expiration_time" => time_attr(now, -60),
+          "valid_from" => time_attr(now, -90)
         })
 
       next_task =
@@ -81,8 +122,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
           "name" => "Dog dinner",
           "due_time" => time_attr(now, 60),
           "expiration_time" => time_attr(now, 120),
-          "execute_window_start_time" => time_attr(now, 60),
-          "execute_window_end_time" => time_attr(now, 90)
+          "valid_from" => time_attr(now, 60)
         })
 
       link = link_fixture(scope)
@@ -119,8 +159,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
           "name" => "Dog breakfast",
           "due_time" => time_attr(now, -5),
           "expiration_time" => time_attr(now, 5),
-          "execute_window_start_time" => time_attr(now, -5),
-          "execute_window_end_time" => time_attr(now, 5)
+          "valid_from" => time_attr(now, -5)
         })
 
       link = link_fixture(scope)
@@ -144,7 +183,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
     end
   end
 
-  defp time_attr(%DateTime{} = now, offset_minutes \\ 0) do
+  defp time_attr(%DateTime{} = now, offset_minutes) do
     now
     |> DateTime.add(offset_minutes, :minute)
     |> DateTime.to_time()
