@@ -15,7 +15,8 @@ defmodule DoneManager.TasksTest do
                  "name" => "Spot breakfast",
                  "task_type" => "scheduled",
                  "cadence_frequency" => "daily",
-                 "due_time" => "11:00:00"
+                 "due_time" => "08:00:00",
+                 "expiration_time" => "11:00:00"
                })
 
       assert task.name == "Spot breakfast"
@@ -40,7 +41,7 @@ defmodule DoneManager.TasksTest do
   end
 
   describe "create_task/2 conditional validation" do
-    test "a scheduled task needs a frequency and due time" do
+    test "a scheduled task needs a frequency, due time, and expiration" do
       scope = owner_scope_fixture()
 
       assert {:error, changeset} =
@@ -48,6 +49,7 @@ defmodule DoneManager.TasksTest do
 
       assert "can't be blank" in errors_on(changeset).cadence_frequency
       assert "can't be blank" in errors_on(changeset).due_time
+      assert "can't be blank" in errors_on(changeset).expiration_time
     end
 
     test "a weekly task needs at least one weekday" do
@@ -58,7 +60,8 @@ defmodule DoneManager.TasksTest do
                  "name" => "Bins",
                  "task_type" => "scheduled",
                  "cadence_frequency" => "weekly",
-                 "due_time" => "18:00:00"
+                 "due_time" => "18:00:00",
+                 "expiration_time" => "20:00:00"
                })
 
       assert errors_on(changeset).cadence_weekdays != []
@@ -128,7 +131,7 @@ defmodule DoneManager.TasksTest do
   end
 
   describe "complete_via_web/2" do
-    test "records a web completion attributed to the user, then reports duplicates" do
+    test "completes attributed to the user, then reports duplicates" do
       scope = owner_scope_fixture()
       task = task_fixture(scope)
 
@@ -136,12 +139,10 @@ defmodule DoneManager.TasksTest do
 
       occurrence = Tasks.current_occurrence(task)
       assert Tasks.done?(occurrence)
-      event = Tasks.completion_event(occurrence)
-      assert event.source == "web"
-      assert event.user_id == scope.user.id
+      assert occurrence.completed_by_id == scope.user.id
 
-      assert {:ok, :duplicate_completion_attempted} = Tasks.complete_via_web(scope, task)
-      assert Tasks.done?(occurrence)
+      assert {:ok, :duplicate} = Tasks.complete_via_web(scope, task)
+      assert Tasks.done?(Tasks.current_occurrence(task))
     end
 
     test "rejects a user not in the task's household" do
@@ -150,6 +151,22 @@ defmodule DoneManager.TasksTest do
       other = owner_scope_fixture()
 
       assert {:error, :unauthorized} = Tasks.complete_via_web(other, task)
+    end
+  end
+
+  describe "complete_occurrence/2" do
+    test "completes an open occurrence, then is a no-op when already done" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+      occurrence = Tasks.current_occurrence(task)
+
+      assert {:completed, occurrence} = Tasks.complete_occurrence(occurrence, scope.user.id)
+      assert Tasks.done?(occurrence)
+      assert occurrence.completed_by_id == scope.user.id
+
+      assert {:duplicate, occurrence} = Tasks.complete_occurrence(occurrence, scope.user.id)
+      # Still done — a duplicate attempt does not undo completion.
+      assert Tasks.done?(occurrence)
     end
   end
 
@@ -169,25 +186,6 @@ defmodule DoneManager.TasksTest do
       stranger = owner_scope_fixture()
 
       assert_raise Ecto.NoResultsError, fn -> Tasks.get_task!(stranger, task.id) end
-    end
-  end
-
-  describe "attempt_completion/2" do
-    test "completes an open occurrence, then records a duplicate without undoing" do
-      scope = owner_scope_fixture()
-      task = task_fixture(scope)
-      occurrence = Tasks.current_occurrence(task)
-
-      assert {:completed, _event} =
-               Tasks.attempt_completion(occurrence, %{source: "web", user_id: scope.user.id})
-
-      assert Tasks.done?(occurrence)
-
-      assert {:duplicate_completion_attempted, _event} =
-               Tasks.attempt_completion(occurrence, %{source: "web", user_id: scope.user.id})
-
-      # Still done — a duplicate attempt does not undo completion.
-      assert Tasks.done?(occurrence)
     end
   end
 end

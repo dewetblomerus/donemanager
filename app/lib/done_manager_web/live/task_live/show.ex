@@ -2,7 +2,6 @@ defmodule DoneManagerWeb.TaskLive.Show do
   use DoneManagerWeb, :live_view
 
   alias DoneManager.Accounts.Scope
-  alias DoneManager.Automation
   alias DoneManager.Households
   alias DoneManager.Tasks
 
@@ -23,11 +22,11 @@ defmodule DoneManagerWeb.TaskLive.Show do
         <span class={["badge", @done? && "badge-success"]} data-status={@status}>
           {@status}
         </span>
-        <span :if={@completion} class="opacity-70">
-          Completed by {completed_by(@completion)} at {DoneManager.Timezones.format(
-            @completion.occurred_at,
+        <span :if={@occurrence && @occurrence.completed_at} class="opacity-70">
+          Completed by {completed_by(@occurrence)} at {DoneManager.Timezones.format(
+            @occurrence.completed_at,
             @household.timezone
-          )} (via {@completion.source})
+          )}
         </span>
         <.button
           :if={!@done?}
@@ -54,30 +53,9 @@ defmodule DoneManagerWeb.TaskLive.Show do
         <:item :if={@task.reminder_interval_minutes} title="Reminder every">
           {@task.reminder_interval_minutes} min
         </:item>
-        <:item title="NFC scan window">{task_scan_window(@task)}</:item>
+        <:item title="Execute window">{execute_window(@task)}</:item>
         <:item title="Active">{@task.active}</:item>
       </.list>
-
-      <.header>Assigned tags</.header>
-      <.table id="commands" rows={@commands}>
-        <:col :let={command} label="Tag">{command.nfc_tag.label || command.nfc_tag.external_id}</:col>
-        <:col :let={_command} label="A scan will">{scan_action(@task)}</:col>
-      </.table>
-
-      <section :if={@commands == [] and @assignable_tags != []} class="mt-8">
-        <.header>Assign a tag</.header>
-        <.form for={@assign_form} id="assign-form" phx-submit="assign">
-          <.input
-            field={@assign_form[:tag_id]}
-            type="select"
-            label="Tag"
-            options={Enum.map(@assignable_tags, &{&1.label || &1.external_id, &1.id})}
-          />
-          <footer class="mt-4">
-            <.button variant="primary" phx-disable-with="Assigning...">Assign tag</.button>
-          </footer>
-        </.form>
-      </section>
     </Layouts.app>
     """
   end
@@ -97,59 +75,34 @@ defmodule DoneManagerWeb.TaskLive.Show do
   end
 
   @impl true
-  def handle_event("assign", params, socket) do
-    case Automation.assign_tag(
-           socket.assigns.current_scope,
-           socket.assigns.task,
-           params["tag_id"],
-           params
-         ) do
-      {:ok, _command} ->
-        {:noreply, socket |> put_flash(:info, "Tag assigned.") |> load(socket.assigns.task)}
-
-      {:error, %Ecto.Changeset{}} ->
-        {:noreply, put_flash(socket, :error, "Could not assign that tag.")}
-    end
-  end
-
   def handle_event("complete", _params, socket) do
     case Tasks.complete_via_web(socket.assigns.current_scope, socket.assigns.task) do
       {:ok, :completed} ->
         {:noreply, socket |> put_flash(:info, "Marked complete.") |> load(socket.assigns.task)}
 
-      {:ok, :duplicate_completion_attempted} ->
+      {:ok, :duplicate} ->
         {:noreply, socket |> put_flash(:info, "Already complete.") |> load(socket.assigns.task)}
-
-      {:error, :unauthorized} ->
-        {:noreply, put_flash(socket, :error, "You can't complete this task.")}
     end
   end
 
   defp load(socket, task) do
-    scope = socket.assigns.current_scope
     occurrence = Tasks.current_occurrence(task)
     done? = occurrence != nil and Tasks.done?(occurrence)
-    completion = occurrence && Tasks.completion_event(occurrence)
 
     socket
+    |> assign(:occurrence, occurrence)
     |> assign(:done?, done?)
     |> assign(:status, if(done?, do: "done", else: "open"))
-    |> assign(:completion, completion)
-    |> assign(:commands, Automation.list_commands_for_task(task))
-    |> assign(:assignable_tags, Automation.list_assignable_tags(scope))
-    |> assign(:assign_form, to_form(%{"tag_id" => nil}))
   end
 
-  defp completed_by(%{user: nil}), do: "a shared device"
-  defp completed_by(%{user: user}), do: user.display_name || user.email
+  defp completed_by(%{completed_by: nil}), do: "a household member"
+  defp completed_by(%{completed_by: user}), do: user.display_name || user.email
 
-  defp scan_action(%{task_type: "timer"}), do: "toggle the timer"
-  defp scan_action(_task), do: "complete the task"
+  defp execute_window(%{execute_window_start_time: nil, execute_window_end_time: nil}),
+    do: "All day"
 
-  defp task_scan_window(%{scan_window_start_time: nil, scan_window_end_time: nil}), do: "All day"
-
-  defp task_scan_window(task) do
-    "#{format_time(task.scan_window_start_time)}-#{format_time(task.scan_window_end_time)}"
+  defp execute_window(task) do
+    "#{format_time(task.execute_window_start_time)}-#{format_time(task.execute_window_end_time)}"
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")

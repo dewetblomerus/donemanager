@@ -83,14 +83,14 @@ defmodule DoneManagerWeb.TaskLive.Form do
         />
         <div class="grid gap-4 sm:grid-cols-2">
           <.input
-            field={@form[:scan_window_start_time]}
+            field={@form[:execute_window_start_time]}
             type="time"
-            label="NFC scan window starts (optional)"
+            label="Execute window starts (optional)"
           />
           <.input
-            field={@form[:scan_window_end_time]}
+            field={@form[:execute_window_end_time]}
             type="time"
-            label="NFC scan window ends (optional)"
+            label="Execute window ends (optional)"
           />
         </div>
         <.input field={@form[:active]} type="checkbox" label="Active" />

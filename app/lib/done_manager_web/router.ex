@@ -1,7 +1,6 @@
 defmodule DoneManagerWeb.Router do
   use DoneManagerWeb, :router
 
-  import DoneManagerWeb.ApiAuth
   import DoneManagerWeb.UserAuth
 
   pipeline :browser do
@@ -12,10 +11,6 @@ defmodule DoneManagerWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_scope
-  end
-
-  pipeline :api do
-    plug :accepts, ["json"]
   end
 
   scope "/", DoneManagerWeb do
@@ -45,16 +40,15 @@ defmodule DoneManagerWeb.Router do
       live "/households/:id/tasks/new", TaskLive.Form, :new
       live "/tasks/:id", TaskLive.Show, :show
       live "/tasks/:id/edit", TaskLive.Form, :edit
-      live "/households/:id/tags", TagLive.Index, :index
-      live "/households/:id/tokens", TokenLive.Index, :index
+      live "/households/:id/links", LinkLive.Index, :index
     end
-  end
 
-  # Integration API. NFC tags bake in these paths — see architecture/api.md.
-  scope "/v1", DoneManagerWeb do
-    pipe_through [:api, :require_access_token]
-
-    post "/tags/:external_id/scans", ScanController, :create
+    # The stable tag contract: GET /links/:id resolves and redirects to the
+    # occurrence execute action. /occurrences/:id/execute marks done; the show
+    # page is inert. See architecture/database.md.
+    get "/links/:id", LinkController, :execute
+    get "/occurrences/:id/execute", OccurrenceController, :execute
+    get "/occurrences/:id", OccurrenceController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

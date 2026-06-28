@@ -29,8 +29,8 @@ defmodule DoneManager.Tasks.Task do
     field :cadence_interval_minutes, :integer
     field :due_time, :time
     field :expiration_time, :time
-    field :scan_window_start_time, :time
-    field :scan_window_end_time, :time
+    field :execute_window_start_time, :time
+    field :execute_window_end_time, :time
     field :timer_minutes, :integer
     field :reminder_interval_minutes, :integer
     field :active, :boolean, default: true
@@ -53,8 +53,8 @@ defmodule DoneManager.Tasks.Task do
       :cadence_interval_minutes,
       :due_time,
       :expiration_time,
-      :scan_window_start_time,
-      :scan_window_end_time,
+      :execute_window_start_time,
+      :execute_window_end_time,
       :timer_minutes,
       :reminder_interval_minutes,
       :active
@@ -64,9 +64,9 @@ defmodule DoneManager.Tasks.Task do
     |> validate_number(:cadence_interval_minutes, greater_than: 0)
     |> validate_number(:timer_minutes, greater_than: 0)
     |> validate_number(:reminder_interval_minutes, greater_than: 0)
-    |> validate_scan_window()
-    |> check_constraint(:scan_window_end_time, name: :tasks_scan_window_pair_required)
-    |> check_constraint(:scan_window_end_time, name: :tasks_scan_window_not_empty)
+    |> validate_execute_window()
+    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_pair_required)
+    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_not_empty)
     |> validate_by_type()
   end
 
@@ -78,7 +78,9 @@ defmodule DoneManager.Tasks.Task do
       "scheduled" ->
         changeset
         |> clear_fields([:cadence_interval_minutes, :timer_minutes])
-        |> validate_required([:cadence_frequency, :due_time])
+        # A scheduled task must expire so a missed slot resolves and the next
+        # one is generated (see architecture/database.md).
+        |> validate_required([:cadence_frequency, :due_time, :expiration_time])
         |> validate_inclusion(:cadence_frequency, @frequencies)
         |> validate_subset(:cadence_weekdays, @weekdays)
         |> validate_weekdays()
@@ -122,19 +124,19 @@ defmodule DoneManager.Tasks.Task do
   defp clear_fields(changeset, fields),
     do: Enum.reduce(fields, changeset, &put_change(&2, &1, nil))
 
-  defp validate_scan_window(changeset) do
-    start_time = get_field(changeset, :scan_window_start_time)
-    end_time = get_field(changeset, :scan_window_end_time)
+  defp validate_execute_window(changeset) do
+    start_time = get_field(changeset, :execute_window_start_time)
+    end_time = get_field(changeset, :execute_window_end_time)
 
     cond do
       is_nil(start_time) and is_nil(end_time) ->
         changeset
 
       is_nil(start_time) or is_nil(end_time) ->
-        add_error(changeset, :scan_window_end_time, "must be set with scan window start")
+        add_error(changeset, :execute_window_end_time, "must be set with execute window start")
 
       Time.compare(start_time, end_time) == :eq ->
-        add_error(changeset, :scan_window_end_time, "must differ from scan window start")
+        add_error(changeset, :execute_window_end_time, "must differ from execute window start")
 
       true ->
         changeset
@@ -144,7 +146,7 @@ defmodule DoneManager.Tasks.Task do
   # HTML <input type="time"> submits "HH:MM"; Ecto's :time cast wants seconds.
   defp normalize_times(attrs) when is_map(attrs) do
     Enum.reduce(
-      ["due_time", "expiration_time", "scan_window_start_time", "scan_window_end_time"],
+      ["due_time", "expiration_time", "execute_window_start_time", "execute_window_end_time"],
       attrs,
       fn key, acc ->
         case Map.get(acc, key) do
