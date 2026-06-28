@@ -14,6 +14,7 @@ defmodule DoneManagerWeb.UserAuth do
   alias DoneManager.Accounts
   alias DoneManager.Accounts.Scope
   alias DoneManager.Households
+  alias DoneManagerWeb.HomeRedirector
   alias Phoenix.LiveView
 
   @doc "Logs in a user by storing their id in a renewed session."
@@ -21,7 +22,7 @@ defmodule DoneManagerWeb.UserAuth do
     conn
     |> renew_session()
     |> put_session(:user_id, user.id)
-    |> redirect(to: ~p"/households")
+    |> redirect(to: HomeRedirector.path_for_user(user))
   end
 
   @doc "Logs out the current user and clears the session."
