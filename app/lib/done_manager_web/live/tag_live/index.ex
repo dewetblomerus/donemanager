@@ -95,11 +95,19 @@ defmodule DoneManagerWeb.TagLive.Index do
             <span :if={tag.last_scanned_at && is_nil(tag.last_scanned_by)}>
               by a shared device
             </span>
-            <%= case assignment(tag) do %>
+            <%= case assignments(tag) do %>
               <% nil -> %>
                 · <span class="opacity-80">unassigned</span>
-              <% task -> %>
-                · assigned to <.link navigate={~p"/tasks/#{task}"} class="link">{task.name}</.link>
+              <% commands -> %>
+                · assigned to
+                <span class="inline-flex flex-wrap gap-x-2">
+                  <span :for={command <- commands}>
+                    <.link navigate={~p"/tasks/#{command.task}"} class="link">
+                      {command.task.name}
+                    </.link>
+                    <span class="opacity-70">({task_scan_window(command.task)})</span>
+                  </span>
+                </span>
             <% end %>
           </p>
 
@@ -171,10 +179,10 @@ defmodule DoneManagerWeb.TagLive.Index do
     |> assign(:tag_forms, Map.new(tags, &{&1.id, to_form(%{"label" => &1.label})}))
   end
 
-  defp assignment(tag) do
+  defp assignments(tag) do
     case tag.automation_commands do
-      [command | _] -> command.task
-      _ -> nil
+      [] -> nil
+      commands -> commands
     end
   end
 
@@ -190,11 +198,23 @@ defmodule DoneManagerWeb.TagLive.Index do
   defp delete_confirm(tag) do
     base = "Delete this tag? Scanning it again will re-register it."
 
-    case assignment(tag) do
-      nil -> base
-      task -> "#{base} It is assigned to \"#{task.name}\"; that assignment will be removed."
+    case tag.automation_commands do
+      [] ->
+        base
+
+      commands ->
+        names = commands |> Enum.map(&~s("#{&1.task.name}")) |> Enum.join(", ")
+        "#{base} It is assigned to #{names}; those assignments will be removed."
     end
   end
+
+  defp task_scan_window(%{scan_window_start_time: nil, scan_window_end_time: nil}), do: "all day"
+
+  defp task_scan_window(task) do
+    "#{format_time_of_day(task.scan_window_start_time)}-#{format_time_of_day(task.scan_window_end_time)}"
+  end
+
+  defp format_time_of_day(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
 
   defp scanner_name(user), do: user.display_name || user.email
 

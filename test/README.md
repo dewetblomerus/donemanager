@@ -17,14 +17,27 @@ Simulates an NFC tag scan (`POST /v1/tags/{external_id}/scans`) with an
    plaintext  # copy this
    ```
 
-3. Scan:
+3. Put the plaintext token in `test/.envrc.secrets`:
+
+   ```bash
+   export DM_ACCESS_TOKEN=<plaintext>
+   ```
+
+4. Allow direnv from `test/` so `DM_ACCESS_TOKEN` is exported into your shell:
+
+   ```bash
+   cd test
+   direnv allow
+   ```
+
+5. Scan:
 
    ```bash
    # Fresh tag (registers it, then assign it to a task in the web UI):
-   DM_ACCESS_TOKEN=<plaintext> ./scan_tag.sh
+   ./scan_tag.sh
 
    # Re-scan a known tag (e.g. one assigned to a task -> completes it):
-   DM_ACCESS_TOKEN=<plaintext> ./scan_tag.sh 0190c0de-1234-7abc-8def-0123456789ab
+   ./scan_tag.sh 0190c0de-1234-7abc-8def-0123456789ab
    ```
 
 Override the host with `DM_BASE_URL` (default `http://localhost:4000`).

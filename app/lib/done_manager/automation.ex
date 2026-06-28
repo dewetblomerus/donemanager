@@ -33,7 +33,12 @@ defmodule DoneManager.Automation do
   that command's task) preloaded so the UI can show what a tag is assigned to.
   """
   def list_tags_with_assignment(%Scope{household: %Household{id: household_id}}) do
-    active_commands = from(c in AutomationCommand, where: c.active, preload: [:task])
+    active_commands =
+      from(c in AutomationCommand,
+        where: c.active,
+        order_by: [asc: c.inserted_at],
+        preload: [:task]
+      )
 
     from(t in NfcTag,
       where: t.household_id == ^household_id,
@@ -82,17 +87,35 @@ defmodule DoneManager.Automation do
     |> Repo.all()
   end
 
+  @doc "Active tags in the scope's household, for assigning to task commands."
+  def list_assignable_tags(%Scope{household: %Household{id: household_id}}) do
+    from(t in NfcTag,
+      where: t.household_id == ^household_id and t.active,
+      order_by: [asc: t.label, asc: t.external_id]
+    )
+    |> Repo.all()
+  end
+
   @doc """
-  Links a tag to a task. What a scan of the tag does is derived from the task's
-  type at scan time, so nothing about the behavior is frozen here.
+  Links a tag to a task for the whole day. What a scan of the tag does is
+  derived from the task's type at scan time, so nothing about the behavior is
+  frozen here.
   """
-  def assign_tag(%Scope{household: %Household{id: household_id}}, %Task{} = task, tag_id) do
+  def assign_tag(scope, task, tag_id), do: assign_tag(scope, task, tag_id, %{})
+
+  @doc """
+  Links a tag to a task. A task can have one active tag binding; a tag can be
+  shared by multiple tasks. Scan windows live on the task, not the binding.
+  """
+  def assign_tag(%Scope{household: %Household{id: household_id}}, %Task{} = task, tag_id, attrs) do
+    attrs = put_default_label(attrs, task.name)
+
     %AutomationCommand{
       household_id: household_id,
       task_id: task.id,
       nfc_tag_id: tag_id
     }
-    |> AutomationCommand.changeset(%{label: task.name})
+    |> AutomationCommand.changeset(attrs)
     |> Repo.insert()
   end
 
@@ -100,6 +123,7 @@ defmodule DoneManager.Automation do
   def list_commands_for_task(%Task{id: task_id}) do
     from(c in AutomationCommand,
       where: c.task_id == ^task_id and c.active,
+      order_by: [asc: c.inserted_at],
       preload: [:nfc_tag]
     )
     |> Repo.all()
@@ -112,16 +136,20 @@ defmodule DoneManager.Automation do
   `{:ok, outcome}` where `outcome` is a map ready for the API response, or
   `{:error, :malformed_external_id}`. See the contract in architecture/api.md.
   """
-  def handle_scan(%BearerToken{household: %Household{id: household_id}} = token, external_id) do
+  def handle_scan(
+        %BearerToken{household: %Household{id: household_id}} = token,
+        external_id,
+        now \\ DateTime.utc_now()
+      ) do
     if valid_uuid?(external_id) do
-      {state, tag} = find_or_create_tag(household_id, external_id, token.user_id)
-      {:ok, resolve(state, tag, token)}
+      {state, tag} = find_or_create_tag(household_id, external_id, token.user_id, now)
+      {:ok, resolve(state, tag, token, now)}
     else
       {:error, :malformed_external_id}
     end
   end
 
-  defp resolve(:created, _tag, _token) do
+  defp resolve(:created, _tag, _token, _now) do
     %{
       outcome: "tag_registered",
       message: "New tag registered. Assign it to a task in the web app.",
@@ -130,8 +158,8 @@ defmodule DoneManager.Automation do
     }
   end
 
-  defp resolve(:existing, tag, token) do
-    case active_command(tag) do
+  defp resolve(:existing, tag, token, now) do
+    case active_command(tag, now, token.household.timezone) do
       nil ->
         %{
           outcome: "tag_unassigned",
@@ -198,17 +226,27 @@ defmodule DoneManager.Automation do
     }
   end
 
-  defp active_command(%NfcTag{id: tag_id}) do
+  defp active_command(%NfcTag{id: tag_id}, %DateTime{} = now, timezone) do
+    active_command(tag_id, now, timezone)
+  end
+
+  defp active_command(tag_id, %DateTime{} = now, timezone) do
+    local_time = local_time(now, timezone)
+
     from(c in AutomationCommand,
       where: c.nfc_tag_id == ^tag_id and c.active,
       preload: [:task]
     )
-    |> Repo.one()
+    |> Repo.all()
+    |> Enum.filter(&scan_window_contains?(&1.task, local_time))
+    |> select_command_by_occurrence()
+    |> case do
+      {command, _occurrence} -> command
+      _ -> nil
+    end
   end
 
-  defp find_or_create_tag(household_id, external_id, scanned_by_id) do
-    now = DateTime.utc_now()
-
+  defp find_or_create_tag(household_id, external_id, scanned_by_id, now) do
     case Repo.get_by(NfcTag, household_id: household_id, external_id: external_id) do
       nil ->
         %NfcTag{household_id: household_id}
@@ -248,4 +286,58 @@ defmodule DoneManager.Automation do
 
   defp valid_uuid?(value) when is_binary(value), do: match?({:ok, _}, Ecto.UUID.cast(value))
   defp valid_uuid?(_), do: false
+
+  defp put_default_label(attrs, label) when is_map(attrs) do
+    cond do
+      Map.has_key?(attrs, :label) -> attrs
+      Map.has_key?(attrs, "label") -> attrs
+      Enum.any?(Map.keys(attrs), &is_binary/1) -> Map.put(attrs, "label", label)
+      true -> Map.put(attrs, :label, label)
+    end
+  end
+
+  defp local_time(%DateTime{} = utc_instant, timezone) do
+    case DateTime.shift_zone(utc_instant, timezone) do
+      {:ok, local} -> DateTime.to_time(local)
+      {:error, _} -> DateTime.to_time(utc_instant)
+    end
+  end
+
+  defp scan_window_contains?(
+         %Task{scan_window_start_time: nil, scan_window_end_time: nil},
+         _time
+       ),
+       do: true
+
+  defp scan_window_contains?(
+         %Task{scan_window_start_time: from_time, scan_window_end_time: until_time},
+         time
+       ) do
+    if Time.compare(from_time, until_time) == :lt do
+      Time.compare(time, from_time) in [:eq, :gt] and Time.compare(time, until_time) == :lt
+    else
+      Time.compare(time, from_time) in [:eq, :gt] or Time.compare(time, until_time) == :lt
+    end
+  end
+
+  defp select_command_by_occurrence([]), do: nil
+
+  defp select_command_by_occurrence(commands) do
+    commands
+    |> Enum.map(fn command -> {command, Tasks.current_or_create_occurrence(command.task)} end)
+    |> then(fn command_occurrences ->
+      open =
+        Enum.reject(command_occurrences, fn {_command, occurrence} ->
+          Tasks.done?(occurrence)
+        end)
+
+      open
+      |> case do
+        [] -> command_occurrences
+        _ -> open
+      end
+    end)
+    |> Enum.sort_by(fn {_command, occurrence} -> occurrence.due_at end, DateTime)
+    |> List.first()
+  end
 end

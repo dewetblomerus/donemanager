@@ -54,6 +54,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
         <:item :if={@task.reminder_interval_minutes} title="Reminder every">
           {@task.reminder_interval_minutes} min
         </:item>
+        <:item title="NFC scan window">{task_scan_window(@task)}</:item>
         <:item title="Active">{@task.active}</:item>
       </.list>
 
@@ -63,14 +64,14 @@ defmodule DoneManagerWeb.TaskLive.Show do
         <:col :let={_command} label="A scan will">{scan_action(@task)}</:col>
       </.table>
 
-      <section :if={@unassigned_tags != []} class="mt-8">
+      <section :if={@commands == [] and @assignable_tags != []} class="mt-8">
         <.header>Assign a tag</.header>
         <.form for={@assign_form} id="assign-form" phx-submit="assign">
           <.input
             field={@assign_form[:tag_id]}
             type="select"
             label="Tag"
-            options={Enum.map(@unassigned_tags, &{&1.label || &1.external_id, &1.id})}
+            options={Enum.map(@assignable_tags, &{&1.label || &1.external_id, &1.id})}
           />
           <footer class="mt-4">
             <.button variant="primary" phx-disable-with="Assigning...">Assign tag</.button>
@@ -96,8 +97,13 @@ defmodule DoneManagerWeb.TaskLive.Show do
   end
 
   @impl true
-  def handle_event("assign", %{"tag_id" => tag_id}, socket) do
-    case Automation.assign_tag(socket.assigns.current_scope, socket.assigns.task, tag_id) do
+  def handle_event("assign", params, socket) do
+    case Automation.assign_tag(
+           socket.assigns.current_scope,
+           socket.assigns.task,
+           params["tag_id"],
+           params
+         ) do
       {:ok, _command} ->
         {:noreply, socket |> put_flash(:info, "Tag assigned.") |> load(socket.assigns.task)}
 
@@ -130,7 +136,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
     |> assign(:status, if(done?, do: "done", else: "open"))
     |> assign(:completion, completion)
     |> assign(:commands, Automation.list_commands_for_task(task))
-    |> assign(:unassigned_tags, Automation.list_unassigned_tags(scope))
+    |> assign(:assignable_tags, Automation.list_assignable_tags(scope))
     |> assign(:assign_form, to_form(%{"tag_id" => nil}))
   end
 
@@ -139,4 +145,12 @@ defmodule DoneManagerWeb.TaskLive.Show do
 
   defp scan_action(%{task_type: "timer"}), do: "toggle the timer"
   defp scan_action(_task), do: "complete the task"
+
+  defp task_scan_window(%{scan_window_start_time: nil, scan_window_end_time: nil}), do: "All day"
+
+  defp task_scan_window(task) do
+    "#{format_time(task.scan_window_start_time)}-#{format_time(task.scan_window_end_time)}"
+  end
+
+  defp format_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
 end

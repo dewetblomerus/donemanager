@@ -16,8 +16,8 @@ defmodule DoneManager.AutomationFixtures do
   end
 
   @doc "Links `tag` to `task`."
-  def command_fixture(%Scope{} = scope, %Task{} = task, %NfcTag{} = tag) do
-    {:ok, command} = DoneManager.Automation.assign_tag(scope, task, tag.id)
+  def command_fixture(%Scope{} = scope, %Task{} = task, %NfcTag{} = tag, attrs \\ %{}) do
+    {:ok, command} = DoneManager.Automation.assign_tag(scope, task, tag.id, attrs)
     command
   end
 end

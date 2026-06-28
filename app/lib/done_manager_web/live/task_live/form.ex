@@ -81,6 +81,18 @@ defmodule DoneManagerWeb.TaskLive.Form do
           label="Reminder interval in minutes (optional; blank = single reminder)"
           min="1"
         />
+        <div class="grid gap-4 sm:grid-cols-2">
+          <.input
+            field={@form[:scan_window_start_time]}
+            type="time"
+            label="NFC scan window starts (optional)"
+          />
+          <.input
+            field={@form[:scan_window_end_time]}
+            type="time"
+            label="NFC scan window ends (optional)"
+          />
+        </div>
         <.input field={@form[:active]} type="checkbox" label="Active" />
 
         <footer class="mt-4 flex gap-2">

@@ -23,7 +23,7 @@ Only the URL `…/v1/tags/{external_id}/scans` is written onto the tag. The bear
 
 1. Parse the token → prefix lookup → verify against `token_hash` → load the non-revoked `integration_bearer_tokens` row → scope to its `household_id`.
 2. Find or create `nfc_tags` by (`household_id`, `external_id`). An unknown id is first-seen provisioning: create the row active and unassigned. Update `last_scanned_at`.
-3. Resolve the tag's active `automation_command`.
+3. Resolve the tag's active `automation_command` for the household-local time of the scan.
 4. Execute the command (`attempt_completion` / `toggle_timer`), record a `task_event`, attribute it to the token's `user_id` (null for shared-device tokens).
 5. Enqueue notifications.
 
@@ -38,7 +38,7 @@ All valid scans return `200`; the `outcome` field carries the result.
 | `timer_started` | timer occurrence created |
 | `timer_cancelled` | active timer cancelled |
 | `tag_registered` | first scan of an unknown tag; row created |
-| `tag_unassigned` | known tag with no active command |
+| `tag_unassigned` | known tag with no active command for the scan's household-local time |
 
 Errors: `400` malformed `external_id` (not a UUID) · `401` bad or revoked token · `429` household tag-creation cap exceeded.
 
@@ -60,6 +60,8 @@ Errors: `400` malformed `external_id` (not a UUID) · `401` bad or revoked token
 - `external_id` is the tag's permanent identity: an opaque UUIDv7, collision-safe, so scan-driven upsert is unambiguous. A human slug would let a second physical tag with the same id silently map onto the first — a matching row at scan time is the success path, so there is no point at which an "already taken" error could be returned.
 - Human naming uses `nfc_tags.label`, set in the web UI after provisioning. Insert-only UI naming can enforce friendly uniqueness with a real error.
 - Unique index on (`household_id`, `external_id`) backs the upsert.
+- A tag can be assigned to multiple tasks. Each task owns its household-local NFC scan window. If more than one task matches a scan, the backend picks the linked task with the first due open occurrence. Blank task scan windows mean all day; scans outside every linked task's scan window return `tag_unassigned`.
+- Task scan windows are NFC routing guardrails, not task expiration. If breakfast is missed and its NFC window has closed, later scans should route to dinner; breakfast can keep notifying until its own expiration and must be completed deliberately in the web UI.
 - Optional soft cap on auto-creates per household bounds junk rows from a leaked token.
 
 ## Double-fire
@@ -93,8 +95,8 @@ sequenceDiagram
             API-->>Phone: 200 { outcome: tag_unassigned, message → assign in web UI }
         else duplicate within debounce window (external_id, token)
             API-->>Phone: 200 (prior outcome, no new event/notification)
-        else tag assigned to an active command
-            API->>DB: resolve active automation_command
+        else tag assigned to one or more active commands
+            API->>DB: resolve matching task by household-local task scan window
             alt attempt_completion, occurrence incomplete
                 API->>DB: mark done, record task_event (completed)
             else attempt_completion, already done

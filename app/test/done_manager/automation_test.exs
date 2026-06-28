@@ -64,6 +64,111 @@ defmodule DoneManager.AutomationTest do
                Automation.handle_scan(authed, tag.external_id)
     end
 
+    test "one tag can route to different tasks by time of day" do
+      scope = owner_scope_fixture()
+
+      breakfast =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => "08:00:00",
+          "scan_window_start_time" => "05:00",
+          "scan_window_end_time" => "11:00"
+        })
+
+      dinner =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => "18:00:00",
+          "scan_window_start_time" => "17:00",
+          "scan_window_end_time" => "23:00"
+        })
+
+      tag = tag_fixture(scope)
+
+      command_fixture(scope, breakfast, tag)
+      command_fixture(scope, dinner, tag)
+
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      assert {:ok, %{outcome: "completed", task: "Dog breakfast"}} =
+               Automation.handle_scan(authed, tag.external_id, ~U[2026-06-27 08:00:00.000000Z])
+
+      assert {:ok, %{outcome: "completed", task: "Dog dinner"}} =
+               Automation.handle_scan(authed, tag.external_id, ~U[2026-06-27 18:00:00.000000Z])
+    end
+
+    test "a tag with no task scan window matching the scan time is unassigned" do
+      scope = owner_scope_fixture()
+
+      breakfast =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => "08:00:00",
+          "scan_window_start_time" => "05:00",
+          "scan_window_end_time" => "11:00"
+        })
+
+      tag = tag_fixture(scope)
+      command_fixture(scope, breakfast, tag)
+
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      assert {:ok, %{outcome: "tag_unassigned", task: nil}} =
+               Automation.handle_scan(authed, tag.external_id, ~U[2026-06-27 14:00:00.000000Z])
+    end
+
+    test "shared tag windows complete the first open occurrence by due time" do
+      scope = owner_scope_fixture()
+
+      breakfast =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => "08:00:00",
+          "scan_window_start_time" => "05:00",
+          "scan_window_end_time" => "23:00"
+        })
+
+      dinner =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => "18:00:00",
+          "scan_window_start_time" => "05:00",
+          "scan_window_end_time" => "23:00"
+        })
+
+      tag = tag_fixture(scope)
+
+      breakfast_occurrence = Tasks.current_occurrence(breakfast)
+      dinner_occurrence = Tasks.current_occurrence(dinner)
+
+      breakfast_occurrence
+      |> Ecto.Changeset.change(due_at: ~U[2026-06-27 08:00:00.000000Z])
+      |> Repo.update!()
+
+      dinner_occurrence
+      |> Ecto.Changeset.change(due_at: ~U[2026-06-27 18:00:00.000000Z])
+      |> Repo.update!()
+
+      assert {:ok, _command} = Automation.assign_tag(scope, breakfast, tag.id)
+      assert {:ok, _command} = Automation.assign_tag(scope, dinner, tag.id)
+
+      {_token, plaintext} = token_fixture(scope)
+      {:ok, authed} = Integrations.authenticate(plaintext)
+
+      assert {:ok, %{outcome: "completed", task: "Dog breakfast"}} =
+               Automation.handle_scan(authed, tag.external_id, ~U[2026-06-27 19:00:00.000000Z])
+
+      assert Tasks.done?(Tasks.current_occurrence(breakfast))
+      refute Tasks.done?(Tasks.current_occurrence(dinner))
+
+      assert {:ok, %{outcome: "completed", task: "Dog dinner"}} =
+               Automation.handle_scan(authed, tag.external_id, ~U[2026-06-27 19:01:00.000000Z])
+
+      assert Tasks.done?(Tasks.current_occurrence(dinner))
+    end
+
     test "update_tag renames a tag in the scope's household" do
       scope = owner_scope_fixture()
       tag = tag_fixture(scope, label: "Old")

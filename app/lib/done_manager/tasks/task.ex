@@ -29,6 +29,8 @@ defmodule DoneManager.Tasks.Task do
     field :cadence_interval_minutes, :integer
     field :due_time, :time
     field :expiration_time, :time
+    field :scan_window_start_time, :time
+    field :scan_window_end_time, :time
     field :timer_minutes, :integer
     field :reminder_interval_minutes, :integer
     field :active, :boolean, default: true
@@ -51,6 +53,8 @@ defmodule DoneManager.Tasks.Task do
       :cadence_interval_minutes,
       :due_time,
       :expiration_time,
+      :scan_window_start_time,
+      :scan_window_end_time,
       :timer_minutes,
       :reminder_interval_minutes,
       :active
@@ -60,6 +64,9 @@ defmodule DoneManager.Tasks.Task do
     |> validate_number(:cadence_interval_minutes, greater_than: 0)
     |> validate_number(:timer_minutes, greater_than: 0)
     |> validate_number(:reminder_interval_minutes, greater_than: 0)
+    |> validate_scan_window()
+    |> check_constraint(:scan_window_end_time, name: :tasks_scan_window_pair_required)
+    |> check_constraint(:scan_window_end_time, name: :tasks_scan_window_not_empty)
     |> validate_by_type()
   end
 
@@ -115,14 +122,37 @@ defmodule DoneManager.Tasks.Task do
   defp clear_fields(changeset, fields),
     do: Enum.reduce(fields, changeset, &put_change(&2, &1, nil))
 
+  defp validate_scan_window(changeset) do
+    start_time = get_field(changeset, :scan_window_start_time)
+    end_time = get_field(changeset, :scan_window_end_time)
+
+    cond do
+      is_nil(start_time) and is_nil(end_time) ->
+        changeset
+
+      is_nil(start_time) or is_nil(end_time) ->
+        add_error(changeset, :scan_window_end_time, "must be set with scan window start")
+
+      Time.compare(start_time, end_time) == :eq ->
+        add_error(changeset, :scan_window_end_time, "must differ from scan window start")
+
+      true ->
+        changeset
+    end
+  end
+
   # HTML <input type="time"> submits "HH:MM"; Ecto's :time cast wants seconds.
   defp normalize_times(attrs) when is_map(attrs) do
-    Enum.reduce(["due_time", "expiration_time"], attrs, fn key, acc ->
-      case Map.get(acc, key) do
-        <<h::binary-size(2), ":", m::binary-size(2)>> -> Map.put(acc, key, "#{h}:#{m}:00")
-        _ -> acc
+    Enum.reduce(
+      ["due_time", "expiration_time", "scan_window_start_time", "scan_window_end_time"],
+      attrs,
+      fn key, acc ->
+        case Map.get(acc, key) do
+          <<h::binary-size(2), ":", m::binary-size(2)>> -> Map.put(acc, key, "#{h}:#{m}:00")
+          _ -> acc
+        end
       end
-    end)
+    )
   end
 
   defp normalize_times(attrs), do: attrs
