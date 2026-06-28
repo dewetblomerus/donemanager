@@ -246,14 +246,20 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp execute_window_contains?(
-         %Task{execute_window_start_time: nil, execute_window_end_time: nil},
-         _time
-       ),
-       do: true
+  # The execute window is [valid_from, expiration_time): start-inclusive,
+  # end-exclusive, crossing midnight when expiration is at or before valid_from.
+  # A null bound is open on that side (null valid_from = from start of day; null
+  # expiration = no end, e.g. interval tasks tappable until done).
+  defp execute_window_contains?(%Task{valid_from: nil, expiration_time: nil}, _time), do: true
+
+  defp execute_window_contains?(%Task{valid_from: nil, expiration_time: until_time}, time),
+    do: Time.compare(time, until_time) == :lt
+
+  defp execute_window_contains?(%Task{valid_from: from_time, expiration_time: nil}, time),
+    do: Time.compare(time, from_time) in [:eq, :gt]
 
   defp execute_window_contains?(
-         %Task{execute_window_start_time: from_time, execute_window_end_time: until_time},
+         %Task{valid_from: from_time, expiration_time: until_time},
          time
        ) do
     if Time.compare(from_time, until_time) == :lt do
@@ -263,7 +269,7 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp seconds_since_window_end(%Task{execute_window_end_time: until_time}, time) do
+  defp seconds_since_window_end(%Task{expiration_time: until_time}, time) do
     if until_time do
       positive_time_diff(time, until_time)
     else
@@ -271,7 +277,7 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp seconds_until_window_start(%Task{execute_window_start_time: from_time}, time) do
+  defp seconds_until_window_start(%Task{valid_from: from_time}, time) do
     if from_time do
       positive_time_diff(from_time, time)
     else

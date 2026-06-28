@@ -12,8 +12,9 @@ defmodule DoneManager.Repo.Migrations.CreateTasks do
       add :cadence_interval_minutes, :integer
       add :due_time, :time
       add :expiration_time, :time
-      add :execute_window_start_time, :time
-      add :execute_window_end_time, :time
+      # Earliest time of day a link tap may act on the task. The window end is
+      # `expiration_time` (shared with occurrence resolution); null = all day.
+      add :valid_from, :time
       add :timer_minutes, :integer
       add :reminder_interval_minutes, :integer
       add :active, :boolean, null: false, default: true
@@ -22,17 +23,5 @@ defmodule DoneManager.Repo.Migrations.CreateTasks do
     end
 
     create index(:tasks, [:household_id])
-
-    # The execute window (when a link tap may act on the task) is a nullable
-    # pair: both set or both null, and never an empty range.
-    create constraint(:tasks, :tasks_execute_window_pair_required,
-             check:
-               "(execute_window_start_time IS NULL AND execute_window_end_time IS NULL) OR (execute_window_start_time IS NOT NULL AND execute_window_end_time IS NOT NULL)"
-           )
-
-    create constraint(:tasks, :tasks_execute_window_not_empty,
-             check:
-               "execute_window_start_time IS NULL OR execute_window_end_time IS NULL OR execute_window_start_time <> execute_window_end_time"
-           )
   end
 end

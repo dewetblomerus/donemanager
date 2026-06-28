@@ -29,8 +29,7 @@ defmodule DoneManager.Tasks.Task do
     field :cadence_interval_minutes, :integer
     field :due_time, :time
     field :expiration_time, :time
-    field :execute_window_start_time, :time
-    field :execute_window_end_time, :time
+    field :valid_from, :time
     field :timer_minutes, :integer
     field :reminder_interval_minutes, :integer
     field :active, :boolean, default: true
@@ -53,8 +52,7 @@ defmodule DoneManager.Tasks.Task do
       :cadence_interval_minutes,
       :due_time,
       :expiration_time,
-      :execute_window_start_time,
-      :execute_window_end_time,
+      :valid_from,
       :timer_minutes,
       :reminder_interval_minutes,
       :active
@@ -64,9 +62,6 @@ defmodule DoneManager.Tasks.Task do
     |> validate_number(:cadence_interval_minutes, greater_than: 0)
     |> validate_number(:timer_minutes, greater_than: 0)
     |> validate_number(:reminder_interval_minutes, greater_than: 0)
-    |> validate_execute_window()
-    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_pair_required)
-    |> check_constraint(:execute_window_end_time, name: :tasks_execute_window_not_empty)
     |> validate_by_type()
   end
 
@@ -124,29 +119,10 @@ defmodule DoneManager.Tasks.Task do
   defp clear_fields(changeset, fields),
     do: Enum.reduce(fields, changeset, &put_change(&2, &1, nil))
 
-  defp validate_execute_window(changeset) do
-    start_time = get_field(changeset, :execute_window_start_time)
-    end_time = get_field(changeset, :execute_window_end_time)
-
-    cond do
-      is_nil(start_time) and is_nil(end_time) ->
-        changeset
-
-      is_nil(start_time) or is_nil(end_time) ->
-        add_error(changeset, :execute_window_end_time, "must be set with execute window start")
-
-      Time.compare(start_time, end_time) == :eq ->
-        add_error(changeset, :execute_window_end_time, "must differ from execute window start")
-
-      true ->
-        changeset
-    end
-  end
-
   # HTML <input type="time"> submits "HH:MM"; Ecto's :time cast wants seconds.
   defp normalize_times(attrs) when is_map(attrs) do
     Enum.reduce(
-      ["due_time", "expiration_time", "execute_window_start_time", "execute_window_end_time"],
+      ["due_time", "expiration_time", "valid_from"],
       attrs,
       fn key, acc ->
         case Map.get(acc, key) do

@@ -98,11 +98,12 @@ defmodule DoneManagerWeb.TaskLive.Show do
   defp completed_by(%{completed_by: nil}), do: "a household member"
   defp completed_by(%{completed_by: user}), do: user.display_name || user.email
 
-  defp execute_window(%{execute_window_start_time: nil, execute_window_end_time: nil}),
-    do: "All day"
+  defp execute_window(%{valid_from: nil, expiration_time: nil}), do: "All day"
 
   defp execute_window(task) do
-    "#{format_time(task.execute_window_start_time)}-#{format_time(task.execute_window_end_time)}"
+    from = if task.valid_from, do: format_time(task.valid_from), else: "00:00"
+    until = if task.expiration_time, do: format_time(task.expiration_time), else: "…"
+    "#{from}-#{until}"
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")

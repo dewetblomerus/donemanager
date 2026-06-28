@@ -10,7 +10,8 @@ defmodule DoneManagerWeb.LinkFlowTest do
   describe "tap → execute flow" do
     test "a bound link redirects to the occurrence execute, which completes it", %{conn: conn} do
       scope = owner_scope_fixture()
-      task = task_fixture(scope)
+      # interval task: no expiration, tappable any wall-clock time the suite runs.
+      task = task_fixture(scope, %{"task_type" => "interval", "cadence_interval_minutes" => 180})
       link = link_fixture(scope)
       bind_fixture(scope, link, task)
 
@@ -70,10 +71,9 @@ defmodule DoneManagerWeb.LinkFlowTest do
       previous_task =
         task_fixture(scope, %{
           "name" => "Dog breakfast",
-          "due_time" => time_attr(now),
-          "expiration_time" => time_attr(now, 30),
-          "execute_window_start_time" => time_attr(now, -90),
-          "execute_window_end_time" => time_attr(now, -60)
+          "due_time" => time_attr(now, -90),
+          "expiration_time" => time_attr(now, -60),
+          "valid_from" => time_attr(now, -90)
         })
 
       next_task =
@@ -81,8 +81,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
           "name" => "Dog dinner",
           "due_time" => time_attr(now, 60),
           "expiration_time" => time_attr(now, 120),
-          "execute_window_start_time" => time_attr(now, 60),
-          "execute_window_end_time" => time_attr(now, 90)
+          "valid_from" => time_attr(now, 60)
         })
 
       link = link_fixture(scope)
@@ -119,8 +118,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
           "name" => "Dog breakfast",
           "due_time" => time_attr(now, -5),
           "expiration_time" => time_attr(now, 5),
-          "execute_window_start_time" => time_attr(now, -5),
-          "execute_window_end_time" => time_attr(now, 5)
+          "valid_from" => time_attr(now, -5)
         })
 
       link = link_fixture(scope)
@@ -144,7 +142,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
     end
   end
 
-  defp time_attr(%DateTime{} = now, offset_minutes \\ 0) do
+  defp time_attr(%DateTime{} = now, offset_minutes) do
     now
     |> DateTime.add(offset_minutes, :minute)
     |> DateTime.to_time()
