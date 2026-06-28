@@ -1,12 +1,13 @@
 defmodule DoneManager.Tasks do
   @moduledoc """
-  Tasks, their occurrences, and the events that record what happened to them.
+  Tasks and their occurrences.
 
   Read/write functions take a `%Scope{}` and only ever touch the scope's
-  household, so cross-household access is structurally impossible. Occurrence
-  status is always derived from `task_events`, never stored. In the Stage 2
-  slice a task is created with one eager occurrence; recurrence generation comes
-  later with the reconcile loop. See architecture/stages.md.
+  household, so cross-household access is structurally impossible. Completion
+  status is stored on the occurrence (`completed_at`, `completed_by_id`). In the
+  current slice a task is created with one eager occurrence; the single-invariant
+  reconcile loop comes later. See architecture/stages.md and
+  architecture/scheduling.md.
   """
 
   import Ecto.Query, warn: false
@@ -17,7 +18,6 @@ defmodule DoneManager.Tasks do
   alias DoneManager.Households.HouseholdMembership
   alias DoneManager.Repo
   alias DoneManager.Tasks.Task
-  alias DoneManager.Tasks.TaskEvent
   alias DoneManager.Tasks.TaskOccurrence
 
   ## Tasks
@@ -45,8 +45,8 @@ defmodule DoneManager.Tasks do
 
   @doc """
   Creates a task in the scope's current household and eagerly generates its
-  current occurrence, so the slice has something a scan can complete without a
-  scheduler.
+  current occurrence, so the slice has something an execute can complete without
+  a scheduler.
   """
   def create_task(%Scope{household: %Household{id: household_id}}, attrs) do
     Repo.transaction(fn ->
@@ -61,10 +61,17 @@ defmodule DoneManager.Tasks do
     end)
   end
 
-  @doc "Updates a task. The task must already have been loaded through a scope."
+  @doc """
+  Updates a task and ensures it still has one open occurrence (create/update
+  upserts the open occurrence; see architecture/scheduling.md). The task must
+  already have been loaded through a scope.
+  """
   def update_task(%Scope{household: %Household{id: household_id}}, %Task{} = task, attrs) do
     if task.household_id == household_id do
-      task |> Task.changeset(attrs) |> Repo.update()
+      with {:ok, task} <- task |> Task.changeset(attrs) |> Repo.update() do
+        current_or_create_occurrence(task)
+        {:ok, task}
+      end
     else
       {:error, :unauthorized}
     end
@@ -79,16 +86,16 @@ defmodule DoneManager.Tasks do
     from(o in TaskOccurrence,
       where: o.task_id == ^task_id,
       order_by: [desc: o.inserted_at],
-      limit: 1
+      limit: 1,
+      preload: [:completed_by]
     )
     |> Repo.one()
   end
 
   @doc """
   The task's current occurrence, generating one if none exists. The eager
-  occurrence makes this rare, but a scan must always have something to act on
-  (and an interval task's completion rolls a fresh occurrence forward), so the
-  scan path self-heals rather than failing.
+  occurrence makes this rare, but an execute must always have something to act
+  on, so the path self-heals rather than failing.
   """
   def current_or_create_occurrence(%Task{} = task) do
     case current_occurrence(task) do
@@ -97,81 +104,73 @@ defmodule DoneManager.Tasks do
     end
   end
 
-  defp insert_occurrence(%Task{id: task_id}) do
-    %TaskOccurrence{task_id: task_id}
-    |> TaskOccurrence.changeset(%{occurrence_date: Date.utc_today(), due_at: DateTime.utc_now()})
-    |> Repo.insert()
-  end
-
-  defp unwrap_occurrence({:ok, occurrence}), do: occurrence
-
-  @doc "Whether an occurrence has been completed, derived from its events."
-  def done?(%TaskOccurrence{id: occurrence_id}) do
-    Repo.exists?(
-      from e in TaskEvent,
-        where: e.task_occurrence_id == ^occurrence_id and e.event_type == "completed"
-    )
-  end
-
-  @doc "The `completed` event for an occurrence with its user preloaded, or nil."
-  def completion_event(%TaskOccurrence{id: occurrence_id}) do
-    from(e in TaskEvent,
-      where: e.task_occurrence_id == ^occurrence_id and e.event_type == "completed",
-      order_by: [asc: e.occurred_at],
-      limit: 1,
-      preload: [:user]
-    )
-    |> Repo.one()
-  end
-
   @doc """
-  Attempts to complete an occurrence. Records a `completed` event if it is still
-  open, or a `duplicate_completion_attempted` event without undoing it if it was
-  already done. `attribution` carries the actor keys (`user_id`, `nfc_tag_id`,
-  `automation_command_id`, `integration_bearer_token_id`) and `source`.
-  Returns `{outcome, event}` where outcome is `:completed` or
-  `:duplicate_completion_attempted`.
+  Fetches an occurrence by id, but only if the scope's user is a member of its
+  task's household, or raises (default-deny). Task and `completed_by` preloaded.
   """
-  def attempt_completion(%TaskOccurrence{} = occurrence, attribution) do
-    outcome = if done?(occurrence), do: :duplicate_completion_attempted, else: :completed
-    event_type = if outcome == :completed, do: "completed", else: "duplicate_completion_attempted"
-    {:ok, event} = record_event(occurrence, event_type, attribution)
-    {outcome, event}
+  def get_occurrence!(%Scope{user: %User{id: user_id}}, id) do
+    from(o in TaskOccurrence,
+      join: t in Task,
+      on: t.id == o.task_id,
+      join: m in HouseholdMembership,
+      on: m.household_id == t.household_id,
+      where: o.id == ^id and m.user_id == ^user_id,
+      preload: [:completed_by, :task]
+    )
+    |> Repo.one!()
+  end
+
+  @doc "Whether an occurrence has been completed."
+  def done?(%TaskOccurrence{} = occurrence), do: TaskOccurrence.done?(occurrence)
+
+  @doc """
+  Completes an occurrence, attributed to `user_id`. Idempotent: if it was
+  already done it is not re-stamped. Returns `{:completed, occurrence}` or
+  `{:duplicate, occurrence}`.
+  """
+  def complete_occurrence(%TaskOccurrence{} = occurrence, user_id) do
+    if TaskOccurrence.done?(occurrence) do
+      {:duplicate, occurrence}
+    else
+      occurrence =
+        occurrence
+        |> TaskOccurrence.changeset(%{
+          completed_at: DateTime.utc_now(),
+          completed_by_id: user_id
+        })
+        |> Repo.update()
+        |> unwrap()
+        |> Repo.preload(:completed_by)
+
+      {:completed, occurrence}
+    end
   end
 
   @doc """
-  Completes a task from the web UI, attributed to the scope's user. Generates
-  the current occurrence if needed, then records a `completed` (or
-  `duplicate_completion_attempted`) event with `source: "web"` — the same
-  mechanism as a scan, just from the browser. The user must belong to the task's
-  household; the matching `household_id` binding enforces that.
+  Completes a task's current occurrence from the web UI, attributed to the
+  scope's user — the same mechanism as a tap. The task must already have been
+  loaded through a scope (membership-checked). Returns `{:ok, :completed}` or
+  `{:ok, :duplicate}`.
   """
   def complete_via_web(
         %Scope{user: %User{id: user_id}, household: %Household{id: household_id}},
         %Task{household_id: household_id} = task
       ) do
-    occurrence = current_or_create_occurrence(task)
-    {outcome, _event} = attempt_completion(occurrence, %{source: "web", user_id: user_id})
+    {outcome, _occurrence} =
+      task |> current_or_create_occurrence() |> complete_occurrence(user_id)
+
     {:ok, outcome}
   end
 
   def complete_via_web(_scope, _task), do: {:error, :unauthorized}
 
-  defp record_event(%TaskOccurrence{id: occurrence_id}, event_type, attribution) do
-    %TaskEvent{
-      task_occurrence_id: occurrence_id,
-      user_id: attribution[:user_id],
-      nfc_tag_id: attribution[:nfc_tag_id],
-      automation_command_id: attribution[:automation_command_id],
-      integration_bearer_token_id: attribution[:integration_bearer_token_id]
-    }
-    |> TaskEvent.changeset(%{
-      event_type: event_type,
-      source: attribution[:source] || "system",
-      occurred_at: DateTime.utc_now()
-    })
+  defp insert_occurrence(%Task{id: task_id}) do
+    %TaskOccurrence{task_id: task_id}
+    |> TaskOccurrence.changeset(%{due_at: DateTime.utc_now()})
     |> Repo.insert()
   end
+
+  defp unwrap_occurrence({:ok, occurrence}), do: Repo.preload(occurrence, :completed_by)
 
   defp unwrap({:ok, record}), do: record
   defp unwrap({:error, changeset}), do: Repo.rollback(changeset)

@@ -2,6 +2,10 @@
 
 Informal running log of choices and why. Newest first.
 
+## One-time pre-launch migration reset
+
+The link redesign was applied by **editing the existing migrations in place** rather than adding new ones, and the prod DB is dropped before the next deploy. Safe only because we are pre-launch with no real data: every environment starts fresh, so the migration history reads as a clean description of the destination instead of a rename/drop archaeology trail. This is a one-time move — the moment a real user exists in prod, migrations are additive-only again.
+
 ## NFC carries a public link, not a secret
 
 The Android NFC tooling can't keep a secret separate from what's written to the tag — anything on the tag is public to anyone who scans it. So the bearer-token-on-device model is dead. A tag now carries only a public URL, `GET /links/{id}`, that opens in the phone browser. Authorization comes from the **Auth0 session + household membership**, attribution from the session user. The id is the `links` row's UUIDv7 PK (no `external_id` — that only existed because a tag writer used to mint the id); it's a deep-link target, not a credential.

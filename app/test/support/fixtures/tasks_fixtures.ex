@@ -11,7 +11,8 @@ defmodule DoneManager.TasksFixtures do
         "name" => "Spot breakfast",
         "task_type" => "scheduled",
         "cadence_frequency" => "daily",
-        "due_time" => "11:00:00"
+        "due_time" => "08:00:00",
+        "expiration_time" => "11:00:00"
       })
 
     {:ok, task} = Tasks.create_task(scope, attrs)
