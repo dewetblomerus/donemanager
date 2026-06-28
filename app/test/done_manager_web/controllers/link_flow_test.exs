@@ -5,6 +5,8 @@ defmodule DoneManagerWeb.LinkFlowTest do
   import DoneManager.LinksFixtures
   import DoneManager.TasksFixtures
 
+  alias DoneManager.Links.Link
+  alias DoneManager.Repo
   alias DoneManager.Tasks
 
   describe "tap → execute flow" do
@@ -61,6 +63,45 @@ defmodule DoneManagerWeb.LinkFlowTest do
       conn = get(conn, ~p"/links/#{link.id}")
 
       assert redirected_to(conn) == ~p"/households"
+    end
+
+    test "a new valid UUIDv7 link is claimed for the user's only household", %{conn: conn} do
+      scope = owner_scope_fixture()
+      id = "019f1084-c889-7a9b-972f-037c1fcf88f7"
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{id}")
+
+      assert redirected_to(conn) == ~p"/households/#{scope.household.id}/links"
+
+      link = Repo.get!(Link, id)
+      assert link.household_id == scope.household.id
+      assert link.label == nil
+      assert link.active
+    end
+
+    test "an invalid new link id is not claimed", %{conn: conn} do
+      scope = owner_scope_fixture()
+      id = "not-a-uuidv7"
+      link_count = Repo.aggregate(Link, :count)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{id}")
+
+      assert redirected_to(conn) == ~p"/households"
+      assert Repo.aggregate(Link, :count) == link_count
+    end
+
+    test "a link id already owned by another household is not claimed", %{conn: conn} do
+      owner_scope = owner_scope_fixture()
+      link = link_fixture(owner_scope)
+      scanner_scope = owner_scope_fixture()
+
+      conn = log_in_user(conn, scanner_scope.user)
+      conn = get(conn, ~p"/links/#{link.id}")
+
+      assert redirected_to(conn) == ~p"/households"
+      assert Repo.get!(Link, link.id).household_id == owner_scope.household.id
     end
 
     test "a scan outside task execution hours redirects to inert status without completing",

@@ -29,5 +29,6 @@ defmodule DoneManager.Links.Link do
   def changeset(link, attrs) do
     link
     |> cast(attrs, [:label, :active])
+    |> unique_constraint(:id, name: :links_pkey)
   end
 end

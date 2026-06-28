@@ -20,9 +20,7 @@ defmodule DoneManagerWeb.LinkController do
         redirect(conn, to: ~p"/links/#{id}/status")
 
       {:error, :not_found} ->
-        conn
-        |> put_flash(:error, "That link isn’t available.")
-        |> redirect(to: ~p"/households")
+        claim_new_link(conn, id)
 
       {:error, :unassigned} ->
         conn
@@ -46,6 +44,20 @@ defmodule DoneManagerWeb.LinkController do
       {:error, :unassigned} ->
         conn
         |> put_flash(:info, "This link isn’t assigned to a task yet. Assign it in the app.")
+        |> redirect(to: ~p"/households")
+    end
+  end
+
+  defp claim_new_link(conn, id) do
+    case Links.claim_new_link_for_only_household(conn.assigns.current_scope, id) do
+      {:ok, link} ->
+        conn
+        |> put_flash(:info, "Link added. Name it and assign it to a task.")
+        |> redirect(to: ~p"/households/#{link.household_id}/links")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "That link isn’t available.")
         |> redirect(to: ~p"/households")
     end
   end
