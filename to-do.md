@@ -1,3 +1,4 @@
 - If I only have one household, viewing it should be where I land after login, and should be the home page I am taken to when I click the logo top-left on the page.
+- Decide how much occurrence generation to implement before the Oban reconcile loop. Current shortcut: task creation eagerly inserts one occurrence with `due_at = now` and `expires_at = nil`. Open question: should the app compute scheduled `due_at`/`expires_at` from `due_time`/`expiration_time` now, or wait and do it as part of the shared reconcile-loop implementation?
 - Add a Content-Security-Policy to the browser pipeline (Sobelow Config.CSP, currently ignored) — needs browser testing
 - Skip the Elixir CI for docs-only changes (architecture/**, **.md); run a markdown formatter/linter instead. Watch the required-check + paths-ignore deadlock — prefer the always-trigger + paths-filter + aggregator-job pattern if Mix Check is a required check.

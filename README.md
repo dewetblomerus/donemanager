@@ -16,12 +16,18 @@ Coordinating these routines often means opening messaging apps, crafting message
 
 A central backend coordinates routine tasks for the household.
 
+Current slice:
+
 - Log who completed a task and when.
 - Scan an NFC tag, such as one on the dog food container, to mark a task done.
-- Notify everyone when a task is completed.
-- Remind everyone when a task is not done by a certain time.
 - Let one person acknowledge a task so everyone knows it is handled.
 - If someone missed a notification, scanning the NFC tag before acting can immediately show that the task was already done, when, and by whom.
+
+Planned:
+
+- An Oban cron loop creates recurring occurrences and sends reminders.
+- Notify everyone when a task is completed.
+- Remind everyone when a task is not done by a certain time.
 
 ## Layout
 
@@ -36,6 +42,8 @@ architecture/   design docs
 ## Architecture
 
 See [architecture/README.md](architecture/README.md) for the high-level system diagram and current architecture notes.
+
+The architecture docs describe the current implemented schema and call out planned pieces, such as notification delivery and the Oban reconcile loop, separately.
 
 ## CI
 

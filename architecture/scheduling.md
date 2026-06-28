@@ -1,20 +1,22 @@
 # Scheduling
 
-How occurrences are generated and (post-MVP) reminders are sent.
+Planned behavior for how occurrences will be generated and reminders will be
+sent. The current app slice creates one eager occurrence when a task is created;
+the Oban reconcile loop below is not implemented yet.
 
 ## The single invariant
 
-`scheduled` and `interval` tasks share one rule:
+The planned `scheduled` and `interval` generation model shares one rule:
 
 > **A task has exactly one open occurrence. When it resolves, create the next.**
 
-An occurrence is **resolved** when `completed_at` is set **or** `expires_at < now`. Completion is stored; expiry is derived from `expires_at`, so there is no status column. This invariant is the whole generation model — there is no rolling-horizon pre-generation, and future occurrences are computed for display only, never stored.
+An occurrence is **resolved** when `completed_at` is set **or** `expires_at < now`. Completion is stored; expiry is derived from `expires_at`, so there is no status column. This invariant is the whole planned generation model — there is no rolling-horizon pre-generation, and future occurrences are computed for display only, never stored.
 
 The constraint that a `scheduled` task must set `expiration_time` exists to keep this invariant from stalling: a missed slot resolves *by expiring*, so the next slot is created even when nobody did the task. `interval` tasks have `expires_at = null` and resolve only on completion, so they stay open and grow more overdue until done.
 
 ## The reconcile loop
 
-One Oban cron job runs every minute and derives all work from DB state — it does not process a delta. Each run, for each active `scheduled`/`interval` task:
+One Oban cron job will run every minute and derive all work from DB state — it will not process a delta. Each run, for each active `scheduled`/`interval` task:
 
 1. **Generate.** Find the task's latest occurrence. If it is resolved (`completed_at` set or `expires_at < now`) and no later occurrence exists yet, create the next one. Bootstrap (a brand-new task with no occurrences) is the same path. The only per-type difference is the next `due_at`:
    - `scheduled` — the next wall-clock calendar slot from the cadence, in `households.timezone`, with `expires_at` from `expiration_time`.
@@ -25,16 +27,16 @@ One Oban cron job runs every minute and derives all work from DB state — it do
 
 ## One function, three triggers
 
-Generating an occurrence is the same operation — "ensure this task has a correct open occurrence" — whether it runs from the loop, from task creation, or from a task edit. **Creating or updating a task upserts its single open occurrence**: insert it if missing, recompute `due_at`/`expires_at` if it exists, and **never touch resolved (completed/expired) occurrences** so history stays honest. So an edit to `due_time`/cadence/`expiration_time` (or `cadence_interval_minutes`) is immediately reflected in the open occurrence, and the loop and the editor share one code path. The `(task_id, due_at)` uniqueness guard keeps an edit and a concurrent loop tick from inserting twice.
+Generating an occurrence should become the same operation — "ensure this task has a correct open occurrence" — whether it runs from the loop, from task creation, or from a task edit. **Creating or updating a task should upsert its single open occurrence**: insert it if missing, recompute `due_at`/`expires_at` if it exists, and **never touch resolved (completed/expired) occurrences** so history stays honest. So an edit to `due_time`/cadence/`expiration_time` (or `cadence_interval_minutes`) is immediately reflected in the open occurrence, and the loop and the editor share one code path. The `(task_id, due_at)` uniqueness guard keeps an edit and a concurrent loop tick from inserting twice.
 
 ## Missing occurrence at execute
 
-Because task creation makes the first occurrence and the loop keeps one open, an execute should always find one. The two cases:
+Once task creation makes the first scheduled occurrence correctly and the loop keeps one open, an execute should always find one. The two cases:
 
 - **Current occurrence already resolved** (the normal idempotent tap-twice): redirect to it and show "done". Not an error.
 - **No occurrence at all**: anomalous. For now, fail **loud in the logs, soft in the UI** — render a clear "no active occurrence" page and log an error to investigate, rather than silently find-or-creating (which would hide a generation bug while the system is still being proven out). Find-or-create can be added later if a real timing gap ever appears.
 
-State lives in Postgres (`task_occurrences`, `notification_deliveries`), not in the scheduler. A crash, restart, or skipped tick self-heals on the next run because work is recomputed from current state.
+State will live in Postgres (`task_occurrences`, and later `notification_deliveries`), not in the scheduler. A crash, restart, or skipped tick self-heals on the next run because work is recomputed from current state.
 
 ## Idempotency
 
