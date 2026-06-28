@@ -5,6 +5,9 @@ defmodule DoneManagerWeb.Layouts do
   """
   use DoneManagerWeb, :html
 
+  alias DoneManager.Accounts.Scope
+  alias DoneManager.Households
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -51,7 +54,17 @@ defmodule DoneManagerWeb.Layouts do
             <.theme_toggle />
           </li>
           <%= if @current_scope do %>
-            <li>
+            <li :if={@current_scope.household}>
+              <.link href={~p"/households/#{@current_scope.household}/tasks"} class="btn btn-ghost">
+                Tasks
+              </.link>
+            </li>
+            <li :if={@current_scope.household}>
+              <.link href={~p"/households/#{@current_scope.household}/links"} class="btn btn-ghost">
+                Links
+              </.link>
+            </li>
+            <li :if={show_households_link?(@current_scope)}>
               <.link href={~p"/households"} class="btn btn-ghost">Households</.link>
             </li>
             <li>
@@ -81,6 +94,15 @@ defmodule DoneManagerWeb.Layouts do
     <.flash_group flash={@flash} />
     """
   end
+
+  defp show_households_link?(%Scope{} = scope) do
+    case Households.list_households(scope) do
+      [_household] -> false
+      _households -> true
+    end
+  end
+
+  defp show_households_link?(_scope), do: false
 
   @doc """
   Shows the flash group with standard titles and content.
