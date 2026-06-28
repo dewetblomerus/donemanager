@@ -39,10 +39,26 @@ defmodule DoneManagerWeb.LinkLive.Index do
             </.link>
           </div>
 
-          <label class="mt-2 block rounded-lg border border-base-300 bg-base-100 p-3">
-            <span class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
-              Tag URL
-            </span>
+          <div class="mt-2 rounded-lg border border-base-300 bg-base-100 p-3">
+            <div class="flex items-center justify-between gap-3">
+              <label
+                for={"link-url-#{link.id}"}
+                class="text-xs font-semibold uppercase tracking-wide text-base-content/60"
+              >
+                Tag URL
+              </label>
+              <button
+                type="button"
+                phx-click={
+                  JS.dispatch("dm:copy-to-clipboard", detail: %{text: link_url(link)})
+                  |> JS.push("copied")
+                }
+                class="btn btn-primary btn-soft btn-xs"
+                aria-label={"Copy tag URL for #{link.label || "unnamed link"}"}
+              >
+                <.icon name="hero-clipboard-document" class="size-4" /> Copy
+              </button>
+            </div>
             <input
               id={"link-url-#{link.id}"}
               type="url"
@@ -50,7 +66,7 @@ defmodule DoneManagerWeb.LinkLive.Index do
               readonly
               class="mt-2 w-full bg-transparent text-sm outline-none"
             />
-          </label>
+          </div>
 
           <p class="mt-2 text-sm opacity-70">
             <%= case bound_tasks(link) do %>
@@ -147,6 +163,10 @@ defmodule DoneManagerWeb.LinkLive.Index do
     link = Links.get_link!(scope, id)
     {:ok, _} = Links.delete_link(scope, link)
     {:noreply, socket |> put_flash(:info, "Link deleted.") |> load(scope)}
+  end
+
+  def handle_event("copied", _params, socket) do
+    {:noreply, put_flash(socket, :info, "Link copied.")}
   end
 
   def handle_event("bind", %{"id" => id, "task_id" => task_id}, socket) when task_id != "" do
