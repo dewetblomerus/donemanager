@@ -4,10 +4,12 @@ defmodule DoneManagerWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  @one_year_in_seconds 365 * 24 * 60 * 60
   @session_options [
     store: :cookie,
     key: "_done_manager_key",
     signing_salt: "8VJBQtO0",
+    max_age: @one_year_in_seconds,
     same_site: "Lax"
   ]
 

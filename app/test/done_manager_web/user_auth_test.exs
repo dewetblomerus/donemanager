@@ -20,6 +20,20 @@ defmodule DoneManagerWeb.UserAuthTest do
     end
   end
 
+  describe "session cookie" do
+    test "persists browser sessions for one year", %{conn: conn} do
+      conn = get(conn, ~p"/auth/auth0/callback")
+
+      session_cookie =
+        conn
+        |> get_resp_header("set-cookie")
+        |> Enum.find(&String.starts_with?(&1, "_done_manager_key="))
+
+      assert session_cookie =~ "max-age=31536000"
+      assert session_cookie =~ "expires="
+    end
+  end
+
   describe "invite to membership flow over LiveView" do
     test "invitee accepts and joins the household", %{conn: conn} do
       owner_scope = DoneManager.HouseholdsFixtures.owner_scope_fixture()
