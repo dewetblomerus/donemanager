@@ -6,33 +6,49 @@ defmodule DoneManagerWeb.OccurrenceHTML do
 
   use DoneManagerWeb, :html
 
+  alias DoneManager.Timezones
+
   def show(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        {@occurrence.task.name}
-        <:subtitle>
-          {headline(@outcome)}
-        </:subtitle>
-      </.header>
+    <Layouts.execution flash={@flash}>
+      <div class="space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h1 class="text-2xl font-semibold leading-tight text-base-content">
+            {@occurrence.task.name}
+          </h1>
+          <.link
+            navigate={~p"/tasks/#{@occurrence.task}"}
+            class="btn btn-sm btn-ghost shrink-0"
+          >
+            View task
+          </.link>
+        </div>
 
-      <div class="mt-4 flex items-center gap-3">
-        <span class={["badge", @occurrence.completed_at && "badge-success"]}>
-          {if @occurrence.completed_at, do: "done", else: "open"}
-        </span>
-        <span :if={@occurrence.completed_at} class="opacity-70">
-          Completed by {completed_by(@occurrence)}
-        </span>
+        <div class={[
+          "rounded-lg p-6 shadow-sm",
+          @outcome == :duplicate && "bg-red-900 text-white",
+          @occurrence.completed_at && @outcome != :duplicate && "bg-success text-success-content",
+          !@occurrence.completed_at && "bg-base-100 text-base-content"
+        ]}>
+          <p class="text-4xl font-bold leading-none">
+            {status_label(@occurrence, @outcome)}
+          </p>
+          <p :if={@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
+            Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
+          </p>
+        </div>
       </div>
-
-      <.button class="mt-6" navigate={~p"/tasks/#{@occurrence.task}"}>View task</.button>
-    </Layouts.app>
+    </Layouts.execution>
     """
   end
 
-  defp headline(:completed), do: "Marked done. Thanks!"
-  defp headline(:duplicate), do: "Already done."
-  defp headline(_), do: nil
+  defp status_label(%{completed_at: %DateTime{}}, :duplicate), do: "Already done"
+  defp status_label(%{completed_at: %DateTime{}}, _outcome), do: "done"
+  defp status_label(_occurrence, _outcome), do: "open"
+
+  defp completed_at(%{completed_at: completed_at, task: %{household: %{timezone: timezone}}}) do
+    Timezones.format(completed_at, timezone)
+  end
 
   defp completed_by(%{completed_by: nil}), do: "a household member"
   defp completed_by(%{completed_by: user}), do: user.display_name || user.email

@@ -95,6 +95,24 @@ defmodule DoneManagerWeb.Layouts do
     """
   end
 
+  @doc """
+  Renders the focused layout used by link execution confirmation pages.
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  slot :inner_block, required: true
+
+  def execution(assigns) do
+    ~H"""
+    <main class="min-h-dvh bg-base-200 px-4 py-6 sm:px-6">
+      <div class="mx-auto flex min-h-[calc(100dvh-3rem)] w-full max-w-sm flex-col justify-center">
+        {render_slot(@inner_block)}
+      </div>
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
   defp show_households_link?(%Scope{} = scope) do
     case Households.list_households(scope) do
       [_household] -> false

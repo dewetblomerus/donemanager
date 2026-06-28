@@ -115,7 +115,7 @@ defmodule DoneManager.Tasks do
       join: m in HouseholdMembership,
       on: m.household_id == t.household_id,
       where: o.id == ^id and m.user_id == ^user_id,
-      preload: [:completed_by, :task]
+      preload: [:completed_by, task: :household]
     )
     |> Repo.one!()
   end
