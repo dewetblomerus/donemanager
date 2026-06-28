@@ -51,16 +51,16 @@ defmodule DoneManagerWeb.TaskLive.Form do
             <.input field={@form[:expiration_time]} type="time" label="Expiration time (optional)" />
           <% "interval" -> %>
             <.input
-              field={@form[:cadence_interval_minutes]}
+              field={@form[:interval_minutes]}
               type="number"
               label="Interval in minutes (e.g. 180 for every 3 hours)"
               min="1"
             />
           <% "timer" -> %>
             <.input
-              field={@form[:timer_minutes]}
+              field={@form[:interval_minutes]}
               type="number"
-              label="Timer minutes (how long the countdown runs after a tap)"
+              label="Countdown minutes (how long the timer runs after a tap)"
               min="1"
             />
           <% _ -> %>

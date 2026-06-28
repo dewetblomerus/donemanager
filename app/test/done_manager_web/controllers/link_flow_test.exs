@@ -11,7 +11,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
     test "a bound link redirects to the occurrence execute, which completes it", %{conn: conn} do
       scope = owner_scope_fixture()
       # interval task: no expiration, tappable any wall-clock time the suite runs.
-      task = task_fixture(scope, %{"task_type" => "interval", "cadence_interval_minutes" => 180})
+      task = task_fixture(scope, %{"task_type" => "interval", "interval_minutes" => 180})
       link = link_fixture(scope)
       bind_fixture(scope, link, task)
 

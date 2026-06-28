@@ -85,38 +85,37 @@ defmodule DoneManager.TasksTest do
       assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Dog out", "task_type" => "interval"})
 
-      assert "can't be blank" in errors_on(changeset).cadence_interval_minutes
+      assert "can't be blank" in errors_on(changeset).interval_minutes
 
       assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Dog out",
                  "task_type" => "interval",
-                 "cadence_interval_minutes" => "180",
+                 "interval_minutes" => "180",
                  "due_time" => "09:00:00"
                })
 
-      assert task.cadence_interval_minutes == 180
+      assert task.interval_minutes == 180
       # Schedule-only fields are cleared for an interval task.
       assert task.due_time == nil
     end
 
-    test "a timer task needs timer minutes and carries no cadence" do
+    test "a timer task needs interval minutes and carries no cadence" do
       scope = owner_scope_fixture()
 
       assert {:error, changeset} =
                Tasks.create_task(scope, %{"name" => "Laundry", "task_type" => "timer"})
 
-      assert "can't be blank" in errors_on(changeset).timer_minutes
+      assert "can't be blank" in errors_on(changeset).interval_minutes
 
       assert {:ok, task} =
                Tasks.create_task(scope, %{
                  "name" => "Laundry",
                  "task_type" => "timer",
-                 "timer_minutes" => "60"
+                 "interval_minutes" => "60"
                })
 
-      assert task.timer_minutes == 60
-      assert task.cadence_interval_minutes == nil
+      assert task.interval_minutes == 60
     end
   end
 
