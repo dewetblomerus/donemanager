@@ -97,3 +97,11 @@ config :swoosh, :api_client, false
 config :ueberauth, Ueberauth.Strategy.Auth0.OAuth,
   client_id: "Mb4JTqV09XhFPHo4B0MxPcMDTG8aaLkW",
   domain: "dewet-dev.us.auth0.com"
+
+# Fixed (non-secret) at-rest encryption key for local development.
+config :done_manager, DoneManager.Encrypted,
+  keys: %{1 => Base.decode64!("WuS7INfHIIxsk8oXDjGZmWixHrgSIyBXi3Cxh+t1Wco=")},
+  primary: 1
+
+# Pushover app token from the environment so you can send real test pushes locally.
+config :done_manager, DoneManager.Pushover, app_token: System.get_env("PUSHOVER_APP_TOKEN")

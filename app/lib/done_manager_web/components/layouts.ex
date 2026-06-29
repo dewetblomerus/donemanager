@@ -71,6 +71,9 @@ defmodule DoneManagerWeb.Layouts do
               <.link href={~p"/invitations"} class="btn btn-ghost">Invitations</.link>
             </li>
             <li>
+              <.link href={~p"/settings"} class="btn btn-ghost">Settings</.link>
+            </li>
+            <li>
               <span class="text-sm opacity-70">{@current_scope.user.email}</span>
             </li>
             <li>

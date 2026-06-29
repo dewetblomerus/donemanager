@@ -12,6 +12,7 @@ defmodule DoneManager.Accounts.User do
     field :display_name, :string
     field :quiet_hours_start, :time
     field :quiet_hours_end, :time
+    field :pushover_user_key, DoneManager.Encrypted.Binary, redact: true
 
     has_many :memberships, HouseholdMembership
     has_many :households, through: [:memberships, :household]
@@ -26,5 +27,14 @@ defmodule DoneManager.Accounts.User do
     |> validate_required([:auth0_sub, :email])
     |> unique_constraint(:auth0_sub)
     |> unique_constraint(:email)
+  end
+
+  @doc """
+  Changeset for the user-facing settings form. Excludes `auth0_sub`/`email`,
+  which are managed by Auth0 sign-in (see `changeset/2`).
+  """
+  def settings_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:display_name, :quiet_hours_start, :quiet_hours_end, :pushover_user_key])
   end
 end

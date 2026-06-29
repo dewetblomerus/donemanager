@@ -10,6 +10,18 @@ defmodule DoneManager.Accounts do
 
   def get_user_by_auth0_sub(auth0_sub), do: Repo.get_by(User, auth0_sub: auth0_sub)
 
+  @doc "Updates user-editable settings (display name, quiet hours, Pushover key)."
+  def update_user_settings(%User{} = user, attrs) do
+    user
+    |> User.settings_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc "Changeset for the user settings form."
+  def change_user_settings(%User{} = user, attrs \\ %{}) do
+    User.settings_changeset(user, attrs)
+  end
+
   @doc """
   Finds or creates the user for an Auth0 `Ueberauth.Auth` struct, keyed on the
   stable `auth0_sub`. Profile fields are refreshed on every sign-in.
