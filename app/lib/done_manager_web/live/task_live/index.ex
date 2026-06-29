@@ -59,8 +59,28 @@ defmodule DoneManagerWeb.TaskLive.Index do
   end
 
   defp load_rows(scope) do
-    Enum.map(Tasks.list_tasks(scope), fn task ->
-      %{task: task, status: Tasks.task_status(task)}
-    end)
+    timezone = scope.household.timezone
+
+    scope
+    |> Tasks.list_tasks()
+    |> Enum.map(fn task -> %{task: task, status: Tasks.task_status(task)} end)
+    |> Enum.sort_by(&time_of_day(&1, timezone), Time)
   end
+
+  # Order the day as a timeline: earliest time-of-day first, so morning tasks
+  # (done or missed) sit at the top, "now" falls in the middle, and what's still
+  # coming is below — an overview of where we are in the day, not a to-do list.
+  # Scheduled tasks sort by due_time; others by their occurrence's due_at rendered
+  # in household-local time. Tasks with neither sort last.
+  defp time_of_day(%{task: %{task_type: "scheduled", due_time: %Time{} = due_time}}, _timezone),
+    do: due_time
+
+  defp time_of_day(%{status: %{occurrence: %{due_at: %DateTime{} = due_at}}}, timezone) do
+    case DateTime.shift_zone(due_at, timezone) do
+      {:ok, local} -> DateTime.to_time(local)
+      {:error, _} -> DateTime.to_time(due_at)
+    end
+  end
+
+  defp time_of_day(_row, _timezone), do: ~T[23:59:59.999999]
 end
