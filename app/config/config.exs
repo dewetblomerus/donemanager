@@ -23,6 +23,13 @@ config :done_manager, DoneManager.Repo,
   migration_foreign_key: [type: :uuid],
   migration_timestamps: [type: :timestamptz]
 
+config :done_manager, Oban,
+  repo: DoneManager.Repo,
+  queues: [reconcile: 1],
+  plugins: [
+    {Oban.Plugins.Cron, crontab: [{"* * * * *", DoneManager.Workers.TaskReconcileWorker}]}
+  ]
+
 # Phoenix Scopes: household isolation keyed on household_id (architecture/decisions.md).
 config :done_manager, :scopes,
   user: [

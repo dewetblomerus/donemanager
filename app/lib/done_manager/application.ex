@@ -10,6 +10,7 @@ defmodule DoneManager.Application do
     children = [
       DoneManagerWeb.Telemetry,
       DoneManager.Repo,
+      {Oban, Application.fetch_env!(:done_manager, Oban)},
       {DNSCluster, query: Application.get_env(:done_manager, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: DoneManager.PubSub},
       # Start a worker by calling: DoneManager.Worker.start_link(arg)

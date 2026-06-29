@@ -60,6 +60,26 @@ defmodule DoneManager.Tasks.TaskOccurrence do
 
   def schedule_attrs(%Task{}, _timezone, now), do: %{due_at: ensure_usec(now), expires_at: nil}
 
+  @doc """
+  Derives the next occurrence after a resolved occurrence.
+
+  `scheduled` tasks use the next wall-clock slot after `now`; `interval` tasks
+  are due `interval_minutes` after the completed occurrence.
+  """
+  def next_schedule_attrs(task, timezone, occurrence, now \\ DateTime.utc_now())
+
+  def next_schedule_attrs(
+        %Task{task_type: "interval", interval_minutes: minutes},
+        _timezone,
+        %__MODULE__{completed_at: %DateTime{} = completed_at},
+        _now
+      ) do
+    %{due_at: completed_at |> DateTime.add(minutes, :minute) |> ensure_usec(), expires_at: nil}
+  end
+
+  def next_schedule_attrs(%Task{} = task, timezone, _occurrence, now),
+    do: schedule_attrs(task, timezone, now)
+
   defp next_due_date(task, %DateTime{} = local_now) do
     today = DateTime.to_date(local_now)
 
