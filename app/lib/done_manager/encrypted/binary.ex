@@ -4,6 +4,8 @@ defmodule DoneManager.Encrypted.Binary do
   no third-party deps).
 
   Stored layout: `<<key_id::8, iv::binary-12, tag::binary-16, ciphertext::binary>>`.
+  Ciphertexts are authenticated against this field's storage context, so blobs
+  copied from another encrypted field will not decrypt here.
   The leading `key_id` lets multiple keys coexist, so key rotation is a config
   change plus a re-encryption pass — no maintenance window. Configure with:
 
@@ -13,6 +15,8 @@ defmodule DoneManager.Encrypted.Binary do
   """
 
   use Ecto.Type
+
+  @aad "DoneManager.Accounts.User:pushover_user_key"
 
   @impl true
   def type, do: :binary
@@ -27,11 +31,18 @@ defmodule DoneManager.Encrypted.Binary do
   def dump(nil), do: {:ok, nil}
 
   def dump(plaintext) when is_binary(plaintext) do
-    key_id = primary_id()
+    %{keys: keys, primary: key_id} = validated_config()
     iv = :crypto.strong_rand_bytes(12)
 
     {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(:aes_256_gcm, key(key_id), iv, plaintext, "", true)
+      :crypto.crypto_one_time_aead(
+        :aes_256_gcm,
+        Map.fetch!(keys, key_id),
+        iv,
+        plaintext,
+        @aad,
+        true
+      )
 
     {:ok, <<key_id::8, iv::binary-12, tag::binary-16, ciphertext::binary>>}
   end
@@ -42,7 +53,12 @@ defmodule DoneManager.Encrypted.Binary do
   def load(nil), do: {:ok, nil}
 
   def load(<<key_id::8, iv::binary-12, tag::binary-16, ciphertext::binary>>) do
-    case :crypto.crypto_one_time_aead(:aes_256_gcm, key(key_id), iv, ciphertext, "", tag, false) do
+    %{keys: keys} = validated_config()
+
+    with {:ok, key} <- Map.fetch(keys, key_id) do
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, @aad, tag, false)
+    end
+    |> case do
       :error -> :error
       plaintext when is_binary(plaintext) -> {:ok, plaintext}
     end
@@ -50,13 +66,37 @@ defmodule DoneManager.Encrypted.Binary do
 
   def load(_), do: :error
 
-  defp config, do: Application.fetch_env!(:done_manager, DoneManager.Encrypted)
+  def validate_config!, do: validated_config()
 
-  defp primary_id, do: Keyword.fetch!(config(), :primary)
+  defp validated_config do
+    config = Application.fetch_env!(:done_manager, DoneManager.Encrypted)
+    keys = Keyword.fetch!(config, :keys)
+    primary = Keyword.fetch!(config, :primary)
 
-  defp key(key_id) do
-    config()
-    |> Keyword.fetch!(:keys)
-    |> Map.fetch!(key_id)
+    unless is_map(keys) do
+      raise ArgumentError,
+            "expected DoneManager.Encrypted :keys to be a map of key id to 32-byte key"
+    end
+
+    unless is_integer(primary) and primary in 0..255 do
+      raise ArgumentError,
+            "expected DoneManager.Encrypted :primary to be an integer from 0 to 255"
+    end
+
+    unless Map.has_key?(keys, primary) do
+      raise ArgumentError, "expected DoneManager.Encrypted :primary to reference a configured key"
+    end
+
+    Enum.each(keys, fn
+      {id, key}
+      when is_integer(id) and id in 0..255 and is_binary(key) and byte_size(key) == 32 ->
+        :ok
+
+      {id, key} ->
+        raise ArgumentError,
+              "invalid DoneManager.Encrypted key #{inspect(id)}: expected id 0..255 and a 32-byte binary, got #{inspect(key)}"
+    end)
+
+    %{keys: keys, primary: primary}
   end
 end

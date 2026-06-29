@@ -7,6 +7,8 @@ defmodule DoneManager.Application do
 
   @impl true
   def start(_type, _args) do
+    DoneManager.Encrypted.Binary.validate_config!()
+
     children = [
       DoneManagerWeb.Telemetry,
       DoneManager.Repo,
