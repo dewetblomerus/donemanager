@@ -4,6 +4,7 @@ defmodule DoneManagerWeb.TaskLive.Index do
   alias DoneManager.Accounts.Scope
   alias DoneManager.Households
   alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskStatus
 
   @impl true
   def render(assigns) do
@@ -23,15 +24,22 @@ defmodule DoneManagerWeb.TaskLive.Index do
 
       <.table
         id="tasks"
-        rows={@tasks}
-        row_click={fn task -> JS.navigate(~p"/tasks/#{task}") end}
+        rows={@rows}
+        row_click={fn row -> JS.navigate(~p"/tasks/#{row.task}") end}
       >
-        <:col :let={task} label="Name">{task.name}</:col>
-        <:col :let={task} label="Type">{task.task_type}</:col>
-        <:col :let={task} label="Status">{task.status}</:col>
+        <:col :let={row} label="Name">{row.task.name}</:col>
+        <:col :let={row} label="Type">{row.task.task_type}</:col>
+        <:col :let={row} label="Status">
+          <span
+            class={["badge", TaskStatus.badge_class(row.status.state)]}
+            data-status={row.status.state}
+          >
+            {TaskStatus.label(row.status.state)}
+          </span>
+        </:col>
       </.table>
 
-      <p :if={@tasks == []} class="mt-4 opacity-70">
+      <p :if={@rows == []} class="mt-4 opacity-70">
         No tasks yet. Create one to get started.
       </p>
     </Layouts.app>
@@ -47,14 +55,12 @@ defmodule DoneManagerWeb.TaskLive.Index do
      socket
      |> assign(:current_scope, scope)
      |> assign(:household, household)
-     |> assign(:tasks, load_tasks(scope))}
+     |> assign(:rows, load_rows(scope))}
   end
 
-  defp load_tasks(scope) do
+  defp load_rows(scope) do
     Enum.map(Tasks.list_tasks(scope), fn task ->
-      occurrence = Tasks.current_occurrence(task)
-      status = if occurrence && Tasks.done?(occurrence), do: "done", else: "open"
-      Map.put(task, :status, status)
+      %{task: task, status: Tasks.task_status(task)}
     end)
   end
 end

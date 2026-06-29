@@ -4,6 +4,7 @@ defmodule DoneManagerWeb.TaskLive.Show do
   alias DoneManager.Accounts.Scope
   alias DoneManager.Households
   alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskStatus
 
   @impl true
   def render(assigns) do
@@ -19,17 +20,17 @@ defmodule DoneManagerWeb.TaskLive.Show do
       </.header>
 
       <div id="task-status" class="mt-4 flex items-center gap-3">
-        <span class={["badge", @done? && "badge-success"]} data-status={@status}>
-          {@status}
+        <span class={["badge", TaskStatus.badge_class(@status.state)]} data-status={@status.state}>
+          {TaskStatus.label(@status.state)}
         </span>
-        <span :if={@occurrence && @occurrence.completed_at} class="opacity-70">
-          Completed by {completed_by(@occurrence)} at {DoneManager.Timezones.format(
-            @occurrence.completed_at,
+        <span :if={@status.last_completion} class="opacity-70">
+          {completion_prefix(@status.state)} {completed_by(@status.last_completion)} at {DoneManager.Timezones.format(
+            @status.last_completion.completed_at,
             @household.timezone
           )}
         </span>
         <.button
-          :if={!@done?}
+          :if={@completable?}
           variant="primary"
           phx-click="complete"
           phx-disable-with="Completing..."
@@ -87,14 +88,17 @@ defmodule DoneManagerWeb.TaskLive.Show do
   end
 
   defp load(socket, task) do
-    occurrence = Tasks.current_occurrence(task)
-    done? = occurrence != nil and Tasks.done?(occurrence)
+    status = Tasks.task_status(task)
 
     socket
-    |> assign(:occurrence, occurrence)
-    |> assign(:done?, done?)
-    |> assign(:status, if(done?, do: "done", else: "open"))
+    |> assign(:status, status)
+    |> assign(:completable?, TaskStatus.completable?(status))
   end
+
+  # A completion today reads as current; an earlier one is framed as history so a
+  # later-day view never looks freshly "done".
+  defp completion_prefix(:done), do: "Completed by"
+  defp completion_prefix(_state), do: "Last done by"
 
   defp completed_by(%{completed_by: nil}), do: "a household member"
   defp completed_by(%{completed_by: user}), do: user.display_name || user.email

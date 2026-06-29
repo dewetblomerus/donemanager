@@ -19,6 +19,7 @@ defmodule DoneManager.Tasks do
   alias DoneManager.Repo
   alias DoneManager.Tasks.Task
   alias DoneManager.Tasks.TaskOccurrence
+  alias DoneManager.Tasks.TaskStatus
 
   ## Tasks
 
@@ -109,6 +110,35 @@ defmodule DoneManager.Tasks do
       preload: [:completed_by]
     )
     |> Repo.one()
+  end
+
+  @doc "The most recent completed occurrence for a task, or nil."
+  def last_completed_occurrence(%Task{id: task_id}) do
+    from(o in TaskOccurrence,
+      where: o.task_id == ^task_id and not is_nil(o.completed_at),
+      order_by: [desc: o.completed_at],
+      limit: 1,
+      preload: [:completed_by]
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  The task's clock-aware display status (see `DoneManager.Tasks.TaskStatus`).
+
+  Loads the household timezone and the occurrences the derivation needs. Pass a
+  fixed `now` to make the result deterministic in tests.
+  """
+  def task_status(%Task{} = task, now \\ DateTime.utc_now()) do
+    task = Repo.preload(task, :household)
+
+    TaskStatus.derive(
+      task,
+      current_occurrence(task),
+      last_completed_occurrence(task),
+      task.household.timezone,
+      now
+    )
   end
 
   @doc """

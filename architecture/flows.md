@@ -46,6 +46,21 @@ A tag can also act as a timer instead of a simple "done" — tapping the laundry
 
 In the web app, the household can see each task's current state — done, due, or overdue — and how overdue it is ("3 days overdue"). An every-so-often chore that nobody has done just keeps showing as more and more overdue until someone does it, and the history of completions shows how often it actually happened.
 
+### A status that follows the clock
+
+A task's status has to reflect *the task right now*, not just the last thing that happened to it. The confusing case is a fixed-schedule chore — afternoon medication — that was done yesterday: the list and the task page must not show a bare "Done", because at a glance that reads as "done today". The web app uses the same vocabulary the tag **status page** shows when someone scans outside the chore's hours, so a task carries one honest status through the day:
+
+- **Not yet** — before the chore's window opens (its `valid_from`). Early morning, the afternoon medication reads "Not yet", not "Done".
+- **Open / Overdue** — inside the window and not done. An every-so-often chore that's late reads "Overdue", growing ("3 days overdue").
+- **Done** — completed, and it *stays* Done for the rest of that day so an end-of-day glance shows everything finished, even after the window has closed.
+- **Missed** — the window closed with nobody doing it (a fixed-schedule chore that expired uncompleted).
+
+When the local day rolls over at midnight, the day resets: a chore that was Done or Missed yesterday goes back to "Not yet" (or "Open" if its window is already open) for today's run. So in the morning every routine reads as open or not-yet, and nothing still claims to be done from yesterday.
+
+**On the task page**, the big status follows the same rule — it never reads a plain "Done" on a later day. The page can still show the *previous* completion as history ("Completed by Sam at 2:14pm yesterday"), but the headline status is today's state, not yesterday's.
+
+**When "Done" flips back: local midnight.** A finished chore reads Done until the local day rolls over — not the moment its window closes — so an end-of-evening glance still shows everything done. (The alternative, flipping at the chore's expiration time, was considered and rejected for that reason.)
+
 ## Getting notified (later)
 
 Push notifications are a later addition, not in the first release. The intended shape:

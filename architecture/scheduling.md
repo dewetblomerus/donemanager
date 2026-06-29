@@ -31,6 +31,23 @@ Generating an occurrence should become the same operation — "ensure this task 
 
 **Outstanding:** task *creation* computes the correct slot via `TaskOccurrence.schedule_attrs/3`, but `update_task` does **not** yet recompute the open occurrence — `current_or_create_occurrence` only creates one when none exists. Editing a task's `due_time`/cadence/`expiration_time` currently leaves the existing open occurrence's `due_at`/`expires_at` stale. Closing this means routing `update_task` through the same `schedule_attrs/3` upsert (skipping resolved occurrences).
 
+## Display status in the web UI
+
+The task list and task show page derive a **display status** that tracks the household-local clock, not just the newest occurrence. This reuses the status the tag status page already computes (`Links.resolve_status` → `outside_execution_hours`, `previous`, `next`; see [database.md](database.md)) so a scanned tag and the web UI agree.
+
+The status is derived for the **current local day**, picking the occurrence that day's run is about rather than the literal newest row:
+
+- **Not yet** — `now` is before the occurrence's window opens (`valid_from`).
+- **Open / Overdue** — inside the window, not completed (overdue once past `due_time`; `interval` tasks grow overdue with no window).
+- **Done** — completed; held for the rest of the local day (see the boundary decision in [flows.md](flows.md)).
+- **Missed** — `scheduled` window closed (`expires_at < now`) with no completion.
+
+At local midnight the day resets to the next occurrence, so nothing reads "Done" from a prior day. The task show page may still display the previous completion as history, but its headline status is today's state.
+
+**This is the bug to fix.** Today `TaskLive.Index` and `TaskLive.Show` read `Tasks.current_occurrence/1` (newest by `inserted_at`) and label it `done?`/`open` only. That shows a bare "Done" for an occurrence completed yesterday, and it has no "Not yet"/"Overdue"/"Missed" states. The fix is a time-aware status derivation shared by both views (and ideally the same code the status page uses), keyed on the household timezone.
+
+A related generation edge case: completing a `scheduled` task *before* its `due_time` makes `next_due_date` recompute the same slot, which collides on the `(task_id, due_at)` guard and does not advance until `due_time` passes — leaving the completed occurrence as the "current" one in the meantime. Worth fixing alongside, but the display derivation above is the primary correction.
+
 ## Missing occurrence at execute
 
 Once task creation makes the first scheduled occurrence correctly and the loop keeps one open, an execute should always find one. The two cases:
