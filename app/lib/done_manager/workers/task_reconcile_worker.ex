@@ -1,10 +1,11 @@
 defmodule DoneManager.Workers.TaskReconcileWorker do
   @moduledoc """
-  Periodic worker that keeps task occurrences reconciled.
+  Periodic worker that keeps task occurrences reconciled and sends due reminders.
 
   Cron attempts to enqueue this worker once per minute. Uniqueness across
   incomplete states makes an overrunning reconcile skip later ticks instead of
-  piling up work.
+  piling up work. Generation runs first so a freshly-due occurrence can remind
+  on the same tick.
   """
 
   use Oban.Worker,
@@ -19,5 +20,6 @@ defmodule DoneManager.Workers.TaskReconcileWorker do
   @impl Oban.Worker
   def perform(_job) do
     DoneManager.Tasks.reconcile_occurrences()
+    DoneManager.Notifications.send_due_reminders()
   end
 end

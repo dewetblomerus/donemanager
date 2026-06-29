@@ -110,7 +110,7 @@ erDiagram
 
 Everyone authenticates through Auth0. The `users.auth0_sub` field stores the stable Auth0 subject and maps the external identity to the app user. There is no secret on the tag and no integration token in V1: a tag carries only a public URL (the link execute URL below), and acting on it requires a logged-in user who is a verified member of the link's household. Authorization comes from `household_memberships`, attribution from the session user. A future API integration (Home Assistant, Arduino) can reintroduce a bearer-token table when there is a real non-browser client; V1 has no such client and so no token table.
 
-Notifications are planned but not implemented. The expected future shape is that users own their Pushover destinations directly. A user can belong to multiple households and take the same Pushover delivery setup with them. Households decide which users should be notified; each user's Pushover destinations decide where those notifications are delivered. The first release is routine management only, with no Pushover send path.
+Notifications are implemented for reminders. Each user owns a single encrypted `users.pushover_user_key` (a user belongs to multiple households and carries the same key with them). Reminders fan out to all members of a task's household who have a key set. Households eventually curating *which* members are notified is still future work. See [scheduling.md](scheduling.md) for the send path and `notification_deliveries` below.
 
 ## Notes
 
@@ -121,7 +121,7 @@ Notifications are planned but not implemented. The expected future shape is that
 - `users.quiet_hours_start` and `quiet_hours_end` are per-user times (interpreted in the household timezone). They are per-user from V1 because household members keep different sleeping hours. They shape *how* a notification is delivered, not a hard on/off: the future Pushover sender reads the recipient's quiet hours and picks message priority. Notifications are planned; the columns are kept because they are cheap and the shape does not change with the answer.
 - `household_memberships.role` can start simple, such as `owner` or `member`.
 - `household_invitations` holds invites to an `invitee_email` that may not have a `users` row yet, so it is separate from `household_memberships`. `inviter_id` references the inviting user. `status` tracks the lifecycle (such as `pending`, `accepted`, `expired`). `expires_at` bounds how long an invite is valid. On acceptance after the invitee signs up, a `household_memberships` row is created and the invitation is marked accepted. No email is sent in V1; the invitee learns of the invite in-app after signing up.
-- Planned: `pushover_destinations` will be intentionally Pushover-specific. If other notification integrations are added later, they can get their own tables first.
+- Notifications use a single encrypted `users.pushover_user_key` per user. A `pushover_destinations` table (multiple labelled devices per user) was considered and deferred — see [decisions.md](decisions.md). If other notification integrations are added later, they can get their own tables.
 - `tasks` stores the task definition, behavior type, and cadence, such as `Spot breakfast` due daily by 11:00 in the household's timezone.
 - `task_type` selects the intended task behavior. Current implemented values: `scheduled`, `interval`, and `timer`. The current slice eagerly creates one occurrence when a task is created; the planned Oban reconcile loop will own recurring generation (see [scheduling.md](scheduling.md)). Each type owns its own columns: `scheduled` uses `cadence_weekdays`, `due_time`, and a required `expiration_time`; `interval` and `timer` both use `interval_minutes`.
 - Planned occurrence lifecycle for `scheduled` and `interval`: **a task has exactly one open occurrence; when it resolves, the loop creates the next.** An occurrence is *resolved* when `completed_at` is set **or** `expires_at < now` — completion is stored, expiry is derived. `scheduled` occurrences should have an `expires_at` (their slot resolves even if missed, so the next slot is created), while `interval` has `expires_at = null` and resolves only on completion. Task creation already computes a correct first `scheduled` slot (`due_at`/`expires_at` in `households.timezone`); what remains for the loop is generating the *next* one when the current resolves.
@@ -129,7 +129,7 @@ Notifications are planned but not implemented. The expected future shape is that
 - For `scheduled` tasks, cadence is represented by `cadence_weekdays`. Empty means every day. A non-empty list restricts the task to those weekdays, using lowercase iCalendar-style weekday tokens `mo`, `tu`, `we`, `th`, `fr`, `sa`, `su`. There is no "no days" state; disable or delete a task that should not fire.
 - A task has a single `due_time` — one slot per cadence period. **A chore that happens several times a day is modelled as several tasks**, e.g. "Dog breakfast" and "Dog dinner", not one task with two times. This is deliberate: each occurrence then carries task-specific wording so a person knows at a glance whether *this* meal happened, and it composes with multi-task links — one tag by the food bowl drives both tasks, and each task's `[valid_from, expiration_time)` routes a 7am tap to breakfast and a 6pm tap to dinner.
 - `interval` (floating) tasks are due relative to their last completion, not a calendar slot, so `expires_at` is null (they never expire). `interval_minutes` is the gap, e.g. `180` for a 3-hour "let the dog out" task or `2880` for a 48-hour "empty the robot mop" task. The next occurrence's `due_at` is the completed occurrence's `completed_at` plus the interval; completing at any time resolves the current occurrence and the loop creates the next, so doing it early pushes the next due-time out. There is no per-date duplicate state — one open occurrence at a time, and the completed chain is a clean history of how often the task was actually done.
-- Planned: `tasks.reminder_interval_minutes` (nullable) controls re-notification of an overdue occurrence. The backend will send reminders at this cadence until the occurrence is completed, gated on the last `reminder` `notification_deliveries` row for the occurrence. Null means a single reminder.
+- `tasks.reminder_interval_minutes` (nullable) controls re-notification of an overdue occurrence. The backend sends reminders at this cadence until the occurrence is completed, gated on the `notification_deliveries` row's `last_sent_at` for the occurrence+recipient. Null means a single reminder.
 - `tasks.due_time` and `tasks.expiration_time` are `Time` values — household-local times of day, not instants. **A `scheduled` (calendar-anchored) task must set `expiration_time`** — a missed slot has to resolve by expiring so it doesn't block the next slot from being created (a forgotten breakfast must not suppress dinner). The column stays nullable at the DB level because `interval`/`timer` tasks never expire and leave it null; the requirement is a changeset validation gated on `task_type = scheduled`. We could not think of a calendar-anchored task that should stay open indefinitely, so this is a deliberate constraint — easy to loosen later, hard to add.
 - `task_occurrences` stores each concrete expected instance, such as `Spot breakfast for 2026-06-25`. `due_at` is when the task is due, and nullable `expires_at` is the concrete cutoff after which the occurrence resolves. Both are UTC instants (`utc_datetime_usec`). Task creation computes them for `scheduled` tasks from the wall-clock `due_time`/`expiration_time` in `households.timezone` (the next due slot; see [scheduling.md](scheduling.md)). `interval`/`timer` occurrences are due now with `expires_at = null`. The planned reconcile loop reuses the same computation to generate each subsequent occurrence.
 - There is no `occurrence_date` column. The household-local calendar date an occurrence belongs to is derived from `due_at` in `households.timezone` when displaying or grouping — it was only ever needed as a generation key, and the single-invariant model keys on resolution instead. Generation idempotency comes from "create the next only when the current is resolved," backed by a uniqueness guard on `(task_id, due_at)` (see [scheduling.md](scheduling.md)).
@@ -150,34 +150,30 @@ Notifications are planned but not implemented. The expected future shape is that
 
 ## Retention
 
-Old task history will be deleted from `task_occurrences`. Planned `notification_deliveries` rows will be scoped to a `task_occurrence`; their foreign key should use `ON DELETE CASCADE`, so deleting an old occurrence also deletes its delivery records. This keeps retention simple: the app can delete occurrences older than the configured retention window without leaving orphaned delivery attempts.
+Old task history will be deleted from `task_occurrences`. `notification_deliveries` rows are scoped to a `task_occurrence` and their foreign key uses `ON DELETE CASCADE`, so deleting an old occurrence also deletes its delivery records. This keeps retention simple: the app can delete occurrences older than the configured retention window without leaving orphaned delivery attempts. The upsert (one row per occurrence+recipient+type) keeps the table small in the meantime.
 
-## Planned Notification Tables
+## Notification Tables
+
+`notification_deliveries` is current-state, not an append log: exactly one row per
+`(task_occurrence_id, user_id, notification_type)`, upserted on each send.
+`notification_type` is `"reminder"` today (`"completed"` reserved). `reminder_count`
+and `last_sent_at` drive cadence and per-recipient quiet-hours gating; `last_status`
+records the most recent send outcome (`ok`/`error`). See [scheduling.md](scheduling.md)
+and [decisions.md](decisions.md).
 
 ```mermaid
 erDiagram
-    users ||--o{ pushover_destinations : owns
     task_occurrences ||--o{ notification_deliveries : notifies_about
-    pushover_destinations ||--o{ notification_deliveries : receives
-
-    pushover_destinations {
-        uuid id PK
-        uuid user_id FK
-        string label
-        string pushover_user_key
-        string pushover_device
-        boolean enabled
-        datetime inserted_at
-        datetime updated_at
-    }
+    users ||--o{ notification_deliveries : receives
 
     notification_deliveries {
         uuid id PK
         uuid task_occurrence_id FK
-        uuid pushover_destination_id FK
+        uuid user_id FK
         string notification_type
-        string status
-        datetime sent_at
+        datetime last_sent_at
+        integer reminder_count
+        string last_status
         datetime inserted_at
         datetime updated_at
     }

@@ -22,12 +22,11 @@ Current slice:
 - Scan an NFC tag, such as one on the dog food container, to mark a task done.
 - Let one person acknowledge a task so everyone knows it is handled.
 - If someone missed a notification, scanning the NFC tag before acting can immediately show that the task was already done, when, and by whom.
+- An Oban cron loop creates recurring occurrences and sends Pushover reminders when a task is due/overdue (quiet hours soften delivery).
 
 Planned:
 
-- An Oban cron loop creates recurring occurrences and sends reminders.
 - Notify everyone when a task is completed.
-- Remind everyone when a task is not done by a certain time.
 
 ## Layout
 
