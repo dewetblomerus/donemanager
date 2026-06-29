@@ -16,7 +16,7 @@ defmodule DoneManager.Encrypted.Binary do
 
   use Ecto.Type
 
-  @aad "DoneManager.Accounts.User:pushover_user_key"
+  @aad "users:pushover_user_key"
 
   @impl true
   def type, do: :binary
