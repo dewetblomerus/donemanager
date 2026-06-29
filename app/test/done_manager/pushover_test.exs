@@ -24,6 +24,26 @@ defmodule DoneManager.PushoverTest do
     assert :ok = Pushover.send_message("u-abc123", "Hello", title: "Done Manager")
   end
 
+  test "includes priority when given" do
+    Req.Test.stub(Pushover, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert URI.decode_query(body)["priority"] == "-1"
+      Req.Test.json(conn, %{"status" => 1})
+    end)
+
+    assert :ok = Pushover.send_message("u-abc123", "Hello", priority: -1)
+  end
+
+  test "omits priority when not given" do
+    Req.Test.stub(Pushover, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      refute Map.has_key?(URI.decode_query(body), "priority")
+      Req.Test.json(conn, %{"status" => 1})
+    end)
+
+    assert :ok = Pushover.send_message("u-abc123", "Hello")
+  end
+
   test "returns an error when Pushover rejects the request" do
     Req.Test.stub(Pushover, fn conn ->
       conn
