@@ -22,14 +22,24 @@ defmodule DoneManager.LinksTest do
       assert [] == Links.list_tasks_for_link(link)
     end
 
-    test "binding the same task twice is rejected" do
+    test "binding the same task twice is idempotent" do
       scope = owner_scope_fixture()
       task = task_fixture(scope)
       link = link_fixture(scope)
 
-      assert {:ok, _} = Links.bind_task(scope, link, task.id)
-      assert {:error, changeset} = Links.bind_task(scope, link, task.id)
-      assert errors_on(changeset).link_id != []
+      assert {:ok, binding} = Links.bind_task(scope, link, task.id)
+      assert {:ok, ^binding} = Links.bind_task(scope, link, task.id)
+      assert [task.id] == Links.list_tasks_for_link(link) |> Enum.map(& &1.id)
+    end
+
+    test "rejects binding a task from another household" do
+      scope = owner_scope_fixture()
+      other = owner_scope_fixture()
+      task = task_fixture(other)
+      link = link_fixture(scope)
+
+      assert {:error, :not_found} = Links.bind_task(scope, link, task.id)
+      assert [] == Links.list_tasks_for_link(link)
     end
   end
 
@@ -50,6 +60,16 @@ defmodule DoneManager.LinksTest do
       link = link_fixture(scope)
 
       assert {:error, :unassigned} = Links.resolve_execute(scope, link.id)
+    end
+
+    test "returns the current occurrence of a bound timer task" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+
+      assert {:ok, occurrence} = Links.resolve_execute(scope, link.id)
+      assert occurrence.task_id == task.id
     end
 
     test "a non-member cannot resolve the link" do

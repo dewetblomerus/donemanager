@@ -62,6 +62,7 @@ defmodule DoneManager.MixProject do
       {:ueberauth_auth0, "~> 2.1"},
       {:uuidv7, "~> 1.0"},
       {:tz, "~> 0.28"},
+      {:oban, "~> 2.23"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},

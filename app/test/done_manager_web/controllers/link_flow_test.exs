@@ -55,6 +55,95 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert html =~ "Completed by Test User at"
     end
 
+    test "a bound timer link starts a countdown and shows the due time", %{conn: conn} do
+      scope = owner_scope_fixture()
+
+      task =
+        task_fixture(scope, %{
+          "name" => "Move Laundry To Dryer",
+          "task_type" => "timer",
+          "interval_minutes" => 60
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{link.id}")
+      execute_path = redirected_to(conn)
+
+      conn = get(recycle(conn) |> log_in_user(scope.user), execute_path)
+      html = html_response(conn, 200)
+
+      assert html =~ "Move Laundry To Dryer"
+      assert html =~ "Timer started"
+      assert html =~ "Due at"
+      assert html =~ "Mark done"
+      assert html =~ "Cancel timer"
+      refute html =~ "Completed by"
+
+      occurrence = Tasks.current_occurrence(task)
+      refute Tasks.done?(occurrence)
+      assert DateTime.compare(occurrence.due_at, DateTime.utc_now()) == :gt
+    end
+
+    test "marking a running timer done makes the next scan start a new timer", %{conn: conn} do
+      scope = owner_scope_fixture()
+
+      task =
+        task_fixture(scope, %{
+          "name" => "Move Laundry To Dryer",
+          "task_type" => "timer",
+          "interval_minutes" => 60
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/links/#{link.id}")
+      first_execute_path = redirected_to(conn)
+
+      conn = get(recycle(conn) |> log_in_user(scope.user), first_execute_path)
+      first_occurrence = Tasks.current_occurrence(task)
+
+      conn =
+        post(
+          recycle(conn) |> log_in_user(scope.user),
+          ~p"/occurrences/#{first_occurrence.id}/complete"
+        )
+
+      html = html_response(conn, 200)
+      assert html =~ "done"
+      assert Tasks.done?(Tasks.current_occurrence(task))
+
+      conn = get(recycle(conn) |> log_in_user(scope.user), ~p"/links/#{link.id}")
+      second_execute_path = redirected_to(conn)
+      refute second_execute_path == first_execute_path
+
+      conn = get(recycle(conn) |> log_in_user(scope.user), second_execute_path)
+      html = html_response(conn, 200)
+
+      assert html =~ "Timer started"
+      second_occurrence = Tasks.current_occurrence(task)
+      assert second_occurrence.id != first_occurrence.id
+      refute Tasks.done?(second_occurrence)
+    end
+
+    test "cancelling a running timer removes it", %{conn: conn} do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+      occurrence = task |> Tasks.current_occurrence() |> Repo.preload(task: :household)
+      {:started, occurrence} = Tasks.start_timer_occurrence(occurrence)
+
+      conn = log_in_user(conn, scope.user)
+
+      conn = delete(conn, ~p"/occurrences/#{occurrence.id}/timer")
+
+      assert redirected_to(conn) == ~p"/tasks/#{task}"
+      assert Tasks.current_occurrence(task) == nil
+    end
+
     test "an unassigned link redirects home with a notice", %{conn: conn} do
       scope = owner_scope_fixture()
       link = link_fixture(scope)

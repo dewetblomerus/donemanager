@@ -5,6 +5,7 @@ defmodule DoneManager.TasksTest do
   import DoneManager.TasksFixtures
 
   alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskOccurrence
 
   describe "create_task/2" do
     test "creates the task and eagerly generates its current occurrence" do
@@ -177,6 +178,119 @@ defmodule DoneManager.TasksTest do
       assert {:duplicate, occurrence} = Tasks.complete_occurrence(occurrence, scope.user.id)
       # Still done — a duplicate attempt does not undo completion.
       assert Tasks.done?(occurrence)
+    end
+  end
+
+  describe "start_timer_occurrence/1" do
+    test "sets the due time in the future and does not extend an already-running timer" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+      occurrence = task |> Tasks.current_occurrence() |> Repo.preload(task: :household)
+
+      assert {:started, started} = Tasks.start_timer_occurrence(occurrence)
+      refute Tasks.done?(started)
+      assert DateTime.compare(started.due_at, DateTime.utc_now()) == :gt
+
+      assert {:running, running} = Tasks.start_timer_occurrence(started)
+      assert DateTime.compare(running.due_at, started.due_at) == :eq
+    end
+
+    test "creates a fresh occurrence after a timer is completed" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+
+      occurrence =
+        task
+        |> Tasks.current_occurrence()
+        |> TaskOccurrence.changeset(%{
+          completed_at: ~U[2026-06-28 06:00:00Z],
+          completed_by_id: scope.user.id
+        })
+        |> Repo.update!()
+        |> Repo.preload(task: :household)
+
+      assert {:completed, ^occurrence} = Tasks.start_timer_occurrence(occurrence)
+
+      fresh = Tasks.current_or_create_occurrence(task)
+
+      assert fresh.id != occurrence.id
+      refute Tasks.done?(fresh)
+    end
+  end
+
+  describe "reconcile_occurrences/1" do
+    test "bootstraps an active scheduled task with no occurrence" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+      occurrence = Tasks.current_occurrence(task)
+      assert {:ok, _occurrence} = Repo.delete(occurrence)
+
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:00:00Z])
+
+      occurrence = Tasks.current_occurrence(task)
+      assert occurrence.task_id == task.id
+      assert DateTime.compare(occurrence.due_at, ~U[2026-06-28 08:00:00Z]) == :eq
+      assert DateTime.compare(occurrence.expires_at, ~U[2026-06-28 11:00:00Z]) == :eq
+    end
+
+    test "creates the next scheduled occurrence when the current one expired" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      task
+      |> Tasks.current_occurrence()
+      |> TaskOccurrence.changeset(%{
+        due_at: ~U[2026-06-28 08:00:00Z],
+        expires_at: ~U[2026-06-28 11:00:00Z]
+      })
+      |> Repo.update!()
+
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 12:00:00Z])
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 12:00:00Z])
+
+      occurrences =
+        from(o in TaskOccurrence, where: o.task_id == ^task.id, order_by: [asc: o.due_at])
+        |> Repo.all()
+
+      assert length(occurrences) == 2
+      assert DateTime.compare(List.last(occurrences).due_at, ~U[2026-06-29 08:00:00Z]) == :eq
+    end
+
+    test "creates the next interval occurrence from the completion time" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "interval", "interval_minutes" => 180})
+
+      task
+      |> Tasks.current_occurrence()
+      |> TaskOccurrence.changeset(%{completed_at: ~U[2026-06-28 06:00:00Z]})
+      |> Repo.update!()
+
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:01:00Z])
+
+      occurrence = Tasks.current_occurrence(task)
+      assert occurrence.completed_at == nil
+      assert occurrence.expires_at == nil
+      assert DateTime.compare(occurrence.due_at, ~U[2026-06-28 09:00:00Z]) == :eq
+    end
+
+    test "leaves unresolved active occurrences alone" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:00:00Z])
+
+      assert Repo.aggregate(from(o in TaskOccurrence, where: o.task_id == ^task.id), :count) == 1
+    end
+
+    test "does not generate timer occurrences" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+      occurrence = Tasks.current_occurrence(task)
+      assert {:ok, _occurrence} = Repo.delete(occurrence)
+
+      assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:00:00Z])
+
+      assert Tasks.current_occurrence(task) == nil
     end
   end
 
