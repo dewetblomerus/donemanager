@@ -104,12 +104,20 @@ defmodule DoneManager.Links do
 
   @doc "Binds a task to a link. Idempotent on `(link_id, task_id)`."
   def bind_task(%Scope{household: %Household{id: household_id}}, %Link{} = link, task_id) do
-    if link.household_id == household_id do
-      %LinkTask{household_id: household_id, link_id: link.id}
-      |> LinkTask.changeset(%{task_id: task_id})
-      |> Repo.insert()
+    with true <- link.household_id == household_id,
+         %Task{} <- Repo.get_by(Task, id: task_id, household_id: household_id) do
+      case Repo.get_by(LinkTask, link_id: link.id, task_id: task_id) do
+        %LinkTask{} = binding ->
+          {:ok, binding}
+
+        nil ->
+          %LinkTask{household_id: household_id, link_id: link.id}
+          |> LinkTask.changeset(%{task_id: task_id})
+          |> Repo.insert()
+      end
     else
-      {:error, :unauthorized}
+      false -> {:error, :unauthorized}
+      nil -> {:error, :not_found}
     end
   end
 
@@ -143,7 +151,7 @@ defmodule DoneManager.Links do
   Returns `{:ok, occurrence}`, `{:warning, context}` for a link with tasks but
   no task actionable in the current execute window, `{:error, :not_found}` (no
   such link, or the user is not a member of its household), or
-  `{:error, :unassigned}` (the link drives no active completable task).
+  `{:error, :unassigned}` (the link drives no active task).
   """
   def resolve_execute(%Scope{user: %User{id: user_id}}, link_id, now \\ DateTime.utc_now()) do
     case fetch_link_for_member(link_id, user_id) do
@@ -224,12 +232,11 @@ defmodule DoneManager.Links do
     end
   end
 
-  # Timer tasks (toggle_timer) are deferred, so only completable types resolve.
   defp actionable_tasks(%Link{id: link_id}) do
     from(lt in LinkTask,
       join: t in Task,
       on: t.id == lt.task_id,
-      where: lt.link_id == ^link_id and t.active and t.task_type in ["scheduled", "interval"],
+      where: lt.link_id == ^link_id and t.active,
       select: t
     )
     |> Repo.all()

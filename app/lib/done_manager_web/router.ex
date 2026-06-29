@@ -45,11 +45,13 @@ defmodule DoneManagerWeb.Router do
 
     # The stable tag contract: GET /links/:id resolves and redirects either to
     # the occurrence execute action or the inert link status page.
-    # /occurrences/:id/execute marks done; the show page is inert. See
+    # /occurrences/:id/execute performs the task-type action; the show page is inert. See
     # architecture/database.md.
     get "/links/:id/status", LinkController, :status
     get "/links/:id", LinkController, :execute
     get "/occurrences/:id/execute", OccurrenceController, :execute
+    post "/occurrences/:id/complete", OccurrenceController, :complete
+    delete "/occurrences/:id/timer", OccurrenceController, :cancel_timer
     get "/occurrences/:id", OccurrenceController, :show
   end
 

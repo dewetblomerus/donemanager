@@ -27,8 +27,10 @@ defmodule DoneManagerWeb.OccurrenceHTML do
         <div class={[
           "rounded-lg p-6 shadow-sm",
           @outcome == :duplicate && "bg-red-900 text-white",
+          @outcome in [:started, :running] && "bg-info text-info-content",
           @occurrence.completed_at && @outcome != :duplicate && "bg-success text-success-content",
-          !@occurrence.completed_at && "bg-base-100 text-base-content"
+          !@occurrence.completed_at && @outcome not in [:started, :running] &&
+            "bg-base-100 text-base-content"
         ]}>
           <p class="text-4xl font-bold leading-none">
             {status_label(@occurrence, @outcome)}
@@ -36,6 +38,27 @@ defmodule DoneManagerWeb.OccurrenceHTML do
           <p :if={@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
             Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
           </p>
+          <p :if={!@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
+            Due at {due_at(@occurrence)}
+          </p>
+
+          <div :if={running_timer?(@occurrence)} class="mt-6 flex flex-wrap gap-2">
+            <.link
+              href={~p"/occurrences/#{@occurrence.id}/complete"}
+              method="post"
+              class="btn btn-primary"
+            >
+              Mark done
+            </.link>
+            <.link
+              href={~p"/occurrences/#{@occurrence.id}/timer"}
+              method="delete"
+              data-confirm="Cancel this timer?"
+              class="btn btn-ghost"
+            >
+              Cancel timer
+            </.link>
+          </div>
         </div>
       </div>
     </Layouts.execution>
@@ -100,6 +123,8 @@ defmodule DoneManagerWeb.OccurrenceHTML do
 
   defp status_label(%{completed_at: %DateTime{}}, :duplicate), do: "Already done"
   defp status_label(%{completed_at: %DateTime{}}, _outcome), do: "done"
+  defp status_label(_occurrence, :started), do: "Timer started"
+  defp status_label(_occurrence, :running), do: "Timer running"
   defp status_label(_occurrence, _outcome), do: "open"
 
   defp status_page_title(%{outside_execution_hours: true}), do: "Outside task hours"
@@ -120,6 +145,13 @@ defmodule DoneManagerWeb.OccurrenceHTML do
   defp completed_at(%{completed_at: completed_at, task: %{household: %{timezone: timezone}}}) do
     Timezones.format(completed_at, timezone)
   end
+
+  defp due_at(%{due_at: due_at, task: %{household: %{timezone: timezone}}}) do
+    Timezones.format(due_at, timezone)
+  end
+
+  defp running_timer?(%{completed_at: nil, task: %{task_type: "timer"}}), do: true
+  defp running_timer?(_occurrence), do: false
 
   defp completed_by(%{completed_by: nil}), do: "a household member"
   defp completed_by(%{completed_by: user}), do: user.display_name || user.email

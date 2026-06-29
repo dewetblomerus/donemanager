@@ -181,6 +181,43 @@ defmodule DoneManager.TasksTest do
     end
   end
 
+  describe "start_timer_occurrence/1" do
+    test "sets the due time in the future and does not extend an already-running timer" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+      occurrence = task |> Tasks.current_occurrence() |> Repo.preload(task: :household)
+
+      assert {:started, started} = Tasks.start_timer_occurrence(occurrence)
+      refute Tasks.done?(started)
+      assert DateTime.compare(started.due_at, DateTime.utc_now()) == :gt
+
+      assert {:running, running} = Tasks.start_timer_occurrence(started)
+      assert DateTime.compare(running.due_at, started.due_at) == :eq
+    end
+
+    test "creates a fresh occurrence after a timer is completed" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope, %{"task_type" => "timer", "interval_minutes" => 60})
+
+      occurrence =
+        task
+        |> Tasks.current_occurrence()
+        |> TaskOccurrence.changeset(%{
+          completed_at: ~U[2026-06-28 06:00:00Z],
+          completed_by_id: scope.user.id
+        })
+        |> Repo.update!()
+        |> Repo.preload(task: :household)
+
+      assert {:completed, ^occurrence} = Tasks.start_timer_occurrence(occurrence)
+
+      fresh = Tasks.current_or_create_occurrence(task)
+
+      assert fresh.id != occurrence.id
+      refute Tasks.done?(fresh)
+    end
+  end
+
   describe "reconcile_occurrences/1" do
     test "bootstraps an active scheduled task with no occurrence" do
       scope = owner_scope_fixture()

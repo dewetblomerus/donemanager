@@ -118,8 +118,18 @@ defmodule DoneManager.Tasks do
   """
   def current_or_create_occurrence(%Task{} = task) do
     case current_occurrence(task) do
-      nil -> task |> insert_occurrence(task_timezone(task)) |> unwrap_occurrence()
-      occurrence -> occurrence
+      nil ->
+        task |> insert_occurrence(task_timezone(task)) |> unwrap_occurrence()
+
+      %TaskOccurrence{} = occurrence when task.task_type == "timer" ->
+        if TaskOccurrence.done?(occurrence) do
+          task |> insert_occurrence(task_timezone(task)) |> unwrap_occurrence()
+        else
+          occurrence
+        end
+
+      occurrence ->
+        occurrence
     end
   end
 
@@ -159,10 +169,47 @@ defmodule DoneManager.Tasks do
         })
         |> Repo.update()
         |> unwrap()
-        |> Repo.preload(:completed_by)
+        |> Repo.preload([:completed_by, task: :household])
 
       {:completed, occurrence}
     end
+  end
+
+  @doc """
+  Starts a timer occurrence by setting its due time to now plus the task interval.
+
+  Reloading an already-running timer is idempotent: it returns `:running` and
+  does not extend the due time.
+  """
+  def start_timer_occurrence(%TaskOccurrence{task: %Task{task_type: "timer"} = task} = occurrence) do
+    now = DateTime.utc_now()
+
+    cond do
+      TaskOccurrence.done?(occurrence) ->
+        {:completed, occurrence}
+
+      DateTime.compare(occurrence.due_at, now) == :gt ->
+        {:running, occurrence}
+
+      true ->
+        occurrence =
+          occurrence
+          |> TaskOccurrence.changeset(%{
+            due_at: DateTime.add(now, task.interval_minutes, :minute)
+          })
+          |> Repo.update()
+          |> unwrap()
+          |> Repo.preload([:completed_by, task: :household])
+
+        {:started, occurrence}
+    end
+  end
+
+  @doc """
+  Cancels a running timer occurrence by deleting it.
+  """
+  def cancel_timer_occurrence(%TaskOccurrence{task: %Task{task_type: "timer"}} = occurrence) do
+    Repo.delete(occurrence)
   end
 
   @doc """
