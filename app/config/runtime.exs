@@ -30,6 +30,16 @@ config :done_manager, DoneManagerWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 if config_env() == :prod do
+  # Encryption key for at-rest fields (e.g. users.pushover_user_key). A base64-encoded
+  # 32-byte key; generate with `:crypto.strong_rand_bytes(32) |> Base.encode64()`.
+  # The map shape supports zero-downtime rotation: add a new id, set :primary, re-encrypt.
+  config :done_manager, DoneManager.Encrypted,
+    keys: %{1 => Base.decode64!(System.fetch_env!("ENCRYPTION_KEY"))},
+    primary: 1
+
+  # Shared Pushover application API token.
+  config :done_manager, DoneManager.Pushover, app_token: System.fetch_env!("PUSHOVER_APP_TOKEN")
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

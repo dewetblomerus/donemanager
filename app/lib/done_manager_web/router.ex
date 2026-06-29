@@ -41,6 +41,7 @@ defmodule DoneManagerWeb.Router do
       live "/tasks/:id", TaskLive.Show, :show
       live "/tasks/:id/edit", TaskLive.Form, :edit
       live "/households/:id/links", LinkLive.Index, :index
+      live "/settings", SettingsLive, :edit
     end
 
     # The stable tag contract: GET /links/:id resolves and redirects either to

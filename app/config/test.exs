@@ -25,6 +25,16 @@ config :done_manager, DoneManager.Mailer, adapter: Swoosh.Adapters.Test
 
 config :done_manager, Oban, testing: :manual
 
+# Fixed (non-secret) at-rest encryption key for tests.
+config :done_manager, DoneManager.Encrypted,
+  keys: %{1 => Base.decode64!("9cN/8mYah2y89RvKRuImVec3xImGxX/avhr7Z8kW19s=")},
+  primary: 1
+
+# Stub Pushover transport; no real network calls in tests.
+config :done_manager, DoneManager.Pushover,
+  app_token: "test-token",
+  plug: {Req.Test, DoneManager.Pushover}
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
