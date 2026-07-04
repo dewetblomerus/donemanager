@@ -36,7 +36,11 @@ defmodule DoneManagerWeb.OccurrenceHTML do
             "bg-base-100 text-base-content"
         ]}>
           <p class="text-4xl font-bold leading-none">
-            {status_label(@occurrence, @outcome, recent_self_completion?(@occurrence, @current_user_id))}
+            {status_label(
+              @occurrence,
+              @outcome,
+              recent_self_completion?(@occurrence, @current_user_id)
+            )}
           </p>
           <p :if={@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
             Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
