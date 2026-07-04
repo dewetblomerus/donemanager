@@ -19,12 +19,13 @@ defmodule DoneManagerWeb.OccurrenceController do
     {outcome, occurrence} = execute_occurrence(occurrence, scope.user.id)
 
     conn
-    |> render(:show, occurrence: occurrence, outcome: outcome)
+    |> render(:show, occurrence: occurrence, outcome: outcome, current_user_id: scope.user.id)
   end
 
   def show(conn, %{"id" => id}) do
-    occurrence = Tasks.get_occurrence!(conn.assigns.current_scope, id)
-    render(conn, :show, occurrence: occurrence, outcome: nil)
+    scope = conn.assigns.current_scope
+    occurrence = Tasks.get_occurrence!(scope, id)
+    render(conn, :show, occurrence: occurrence, outcome: nil, current_user_id: scope.user.id)
   end
 
   def complete(conn, %{"id" => id}) do
@@ -32,7 +33,7 @@ defmodule DoneManagerWeb.OccurrenceController do
     occurrence = Tasks.get_occurrence!(scope, id)
     {outcome, occurrence} = Tasks.complete_occurrence(occurrence, scope.user.id)
 
-    render(conn, :show, occurrence: occurrence, outcome: outcome)
+    render(conn, :show, occurrence: occurrence, outcome: outcome, current_user_id: scope.user.id)
   end
 
   def cancel_timer(conn, %{"id" => id}) do

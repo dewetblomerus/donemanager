@@ -26,14 +26,17 @@ defmodule DoneManagerWeb.OccurrenceHTML do
 
         <div class={[
           "rounded-lg p-6 shadow-sm",
-          @outcome == :duplicate && "bg-red-900 text-white",
+          @outcome == :duplicate && !recent_self_completion?(@occurrence, @current_user_id) &&
+            "bg-red-900 text-white",
           @outcome in [:started, :running] && "bg-info text-info-content",
-          @occurrence.completed_at && @outcome != :duplicate && "bg-success text-success-content",
+          @occurrence.completed_at &&
+            (@outcome != :duplicate || recent_self_completion?(@occurrence, @current_user_id)) &&
+            "bg-success text-success-content",
           !@occurrence.completed_at && @outcome not in [:started, :running] &&
             "bg-base-100 text-base-content"
         ]}>
           <p class="text-4xl font-bold leading-none">
-            {status_label(@occurrence, @outcome)}
+            {status_label(@occurrence, @outcome, recent_self_completion?(@occurrence, @current_user_id))}
           </p>
           <p :if={@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
             Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
@@ -121,11 +124,27 @@ defmodule DoneManagerWeb.OccurrenceHTML do
     """
   end
 
-  defp status_label(%{completed_at: %DateTime{}}, :duplicate), do: "Already done"
-  defp status_label(%{completed_at: %DateTime{}}, _outcome), do: "done"
-  defp status_label(_occurrence, :started), do: "Timer started"
-  defp status_label(_occurrence, :running), do: "Timer running"
-  defp status_label(_occurrence, _outcome), do: "open"
+  # A duplicate re-tap by the same person within the recency window reads as the
+  # same calm ack as the first tap; anyone else's, or an older one, stays red so
+  # a "did I forget?" check hours later still clearly says it's handled.
+  @recent_self_seconds 60
+
+  defp status_label(%{completed_at: %DateTime{}}, :duplicate, true), do: "done"
+  defp status_label(%{completed_at: %DateTime{}}, :duplicate, false), do: "Already done"
+  defp status_label(%{completed_at: %DateTime{}}, _outcome, _recent), do: "done"
+  defp status_label(_occurrence, :started, _recent), do: "Timer started"
+  defp status_label(_occurrence, :running, _recent), do: "Timer running"
+  defp status_label(_occurrence, _outcome, _recent), do: "open"
+
+  defp recent_self_completion?(
+         %{completed_at: %DateTime{} = completed_at, completed_by_id: user_id},
+         user_id
+       )
+       when is_binary(user_id) do
+    DateTime.diff(DateTime.utc_now(), completed_at, :second) <= @recent_self_seconds
+  end
+
+  defp recent_self_completion?(_occurrence, _current_user_id), do: false
 
   defp status_page_title(%{outside_execution_hours: true}), do: "Outside task hours"
   defp status_page_title(_context), do: "Link status"

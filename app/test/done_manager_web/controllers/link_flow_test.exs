@@ -34,9 +34,7 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert Tasks.done?(Tasks.current_occurrence(task))
     end
 
-    test "reloading the occurrence execute shows already done inside the done status", %{
-      conn: conn
-    } do
+    test "an immediate re-tap by the same person stays a calm green ack", %{conn: conn} do
       scope = owner_scope_fixture()
       task = task_fixture(scope)
       occurrence = Tasks.current_occurrence(task)
@@ -50,9 +48,31 @@ defmodule DoneManagerWeb.LinkFlowTest do
         get(recycle(conn) |> log_in_user(scope.user), ~p"/occurrences/#{occurrence.id}/execute")
 
       html = html_response(conn, 200)
+      refute html =~ "Already done"
+      assert html =~ "bg-success"
+      assert html =~ "Completed by Test User at"
+    end
+
+    test "re-tapping a completion older than the window shows the red already-done", %{conn: conn} do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+      occurrence = Tasks.current_occurrence(task)
+
+      conn = log_in_user(conn, scope.user)
+      get(conn, ~p"/occurrences/#{occurrence.id}/execute")
+
+      # Age the completion past the recency window so the "did I forget?" check
+      # hours later reads red.
+      Tasks.get_occurrence!(scope, occurrence.id)
+      |> Ecto.Changeset.change(completed_at: DateTime.add(DateTime.utc_now(), -120, :second))
+      |> Repo.update!()
+
+      conn =
+        get(recycle(conn) |> log_in_user(scope.user), ~p"/occurrences/#{occurrence.id}/execute")
+
+      html = html_response(conn, 200)
       assert html =~ "Already done"
       assert html =~ "bg-red-900"
-      assert html =~ "Completed by Test User at"
     end
 
     test "a bound timer link starts a countdown and shows the due time", %{conn: conn} do
