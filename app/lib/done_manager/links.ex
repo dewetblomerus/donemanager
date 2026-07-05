@@ -11,6 +11,7 @@ defmodule DoneManager.Links do
   """
 
   import Ecto.Query, warn: false
+  require Logger
 
   alias DoneManager.Accounts.Scope
   alias DoneManager.Accounts.User
@@ -146,12 +147,15 @@ defmodule DoneManager.Links do
   Resolves a tap of `GET /links/:id` to the task occurrence that should be
   acted on. Authorizes the user by household membership, picks the actionable
   task among the link's bindings by execute window, and returns its current
-  occurrence (generating one if needed).
+  occurrence. Timer occurrences are generated on demand by the tap; scheduled and
+  interval occurrences are owned by the reconcile loop and never created here.
 
   Returns `{:ok, occurrence}`, `{:warning, context}` for a link with tasks but
   no task actionable in the current execute window, `{:error, :not_found}` (no
-  such link, or the user is not a member of its household), or
-  `{:error, :unassigned}` (the link drives no active task).
+  such link, or the user is not a member of its household), `{:error, :unassigned}`
+  (the link drives no active task), or `{:error, :no_occurrence}` (the link's
+  tasks have no current occurrence at all — an anomaly the reconcile loop should
+  prevent; logged loudly, soft in the UI rather than silently generating one).
   """
   def resolve_execute(%Scope{user: %User{id: user_id}}, link_id, now \\ DateTime.utc_now()) do
     case fetch_link_for_member(link_id, user_id) do
@@ -175,7 +179,8 @@ defmodule DoneManager.Links do
 
         link
         |> actionable_tasks()
-        |> status_result(local_time)
+        |> tasks_with_occurrences()
+        |> status_context(local_time)
     end
   end
 
@@ -222,15 +227,44 @@ defmodule DoneManager.Links do
   defp resolve_actionable(%Link{} = link, now) do
     timezone = link.household.timezone
     local_time = local_time(now, timezone)
-    tasks = actionable_tasks(link)
+    pairs = tasks_with_occurrences(actionable_tasks(link))
 
-    tasks
-    |> Enum.filter(&execute_window_contains?(&1, local_time))
-    |> select_task_by_occurrence(now, timezone)
-    |> case do
-      nil -> outside_window_result(tasks, local_time)
-      task -> {:ok, Tasks.current_or_create_occurrence(task)}
+    in_window =
+      Enum.filter(pairs, fn {task, occ} ->
+        occ && execute_window_contains?(task, local_time)
+      end)
+
+    case select_started_pair(in_window, now, timezone) do
+      {_task, occurrence} -> {:ok, occurrence}
+      nil -> unactionable_result(pairs, local_time)
     end
+  end
+
+  # Pairs each task with its current occurrence. For scheduled/interval tasks a
+  # missing occurrence is an anomaly — task creation seeds one and the reconcile
+  # loop keeps one open — so it is logged loudly rather than silently find-or-
+  # created, keeping a generation gap visible instead of papered over (see
+  # architecture/scheduling.md). Timers are exempt: they are generated on demand
+  # by the tap itself, so they legitimately create here (including a fresh one
+  # once the prior countdown is done).
+  defp tasks_with_occurrences(tasks) do
+    Enum.map(tasks, fn task -> {task, occurrence_for(task)} end)
+  end
+
+  defp occurrence_for(%Task{task_type: "timer"} = task),
+    do: Tasks.current_or_create_occurrence(task)
+
+  defp occurrence_for(%Task{} = task) do
+    occurrence = Tasks.current_occurrence(task)
+    if is_nil(occurrence), do: log_missing_occurrence(task)
+    occurrence
+  end
+
+  defp log_missing_occurrence(%Task{id: id, name: name}) do
+    Logger.error(
+      "execute: task #{id} (#{inspect(name)}) has no current occurrence; " <>
+        "the reconcile loop should keep one open"
+    )
   end
 
   defp actionable_tasks(%Link{id: link_id}) do
@@ -243,28 +277,26 @@ defmodule DoneManager.Links do
     |> Repo.all()
   end
 
-  # Among the windowed tasks, prefer ones with an open occurrence, then the
+  # Among the in-window pairs, prefer ones with an open occurrence, then the
   # earliest due — deterministic routing for a multi-task link. A task's current
   # occurrence may belong to a *future* day (once tonight's resolves, the loop
   # opens tomorrow's), so drop any whose window has not started yet: without this
   # a second tap inside tonight's window would complete tomorrow's occurrence.
-  defp select_task_by_occurrence([], _now, _timezone), do: nil
+  defp select_started_pair([], _now, _timezone), do: nil
 
-  defp select_task_by_occurrence(tasks, now, timezone) do
-    tasks
-    |> Enum.map(fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
+  defp select_started_pair(pairs, now, timezone) do
+    pairs
     |> Enum.filter(fn {task, occ} -> occurrence_started?(task, occ, now, timezone) end)
     |> case do
       [] ->
         nil
 
-      pairs ->
-        open = Enum.reject(pairs, fn {_task, occ} -> Tasks.done?(occ) end)
+      started ->
+        open = Enum.reject(started, fn {_task, occ} -> Tasks.done?(occ) end)
 
-        ((open == [] && pairs) || open)
+        ((open == [] && started) || open)
         |> Enum.sort_by(fn {_task, occ} -> occ.due_at end, DateTime)
         |> List.first()
-        |> elem(0)
     end
   end
 
@@ -301,26 +333,33 @@ defmodule DoneManager.Links do
     end
   end
 
-  defp outside_window_result([], _local_time), do: {:error, :unassigned}
-
-  defp outside_window_result(tasks, local_time) do
-    with {:ok, context} <- status_result(tasks, local_time) do
-      {:warning, context}
+  # The execute path fell through to no actionable occurrence: reuse the status
+  # context, but as a `:warning` (nothing was executed) rather than `:ok`.
+  defp unactionable_result(pairs, local_time) do
+    case status_context(pairs, local_time) do
+      {:ok, context} -> {:warning, context}
+      other -> other
     end
   end
 
-  defp status_result([], _local_time), do: {:error, :unassigned}
+  defp status_context([], _local_time), do: {:error, :unassigned}
 
-  defp status_result(tasks, local_time) do
-    tasks_with_occurrences =
-      Enum.map(tasks, fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
+  defp status_context(pairs, local_time) do
+    case Enum.filter(pairs, fn {_task, occ} -> occ end) do
+      [] ->
+        {:error, :no_occurrence}
 
-    {:ok,
-     %{
-       outside_execution_hours: Enum.all?(tasks, &(not execute_window_contains?(&1, local_time))),
-       previous: nearest_previous_occurrence(tasks_with_occurrences, local_time),
-       next: nearest_next_occurrence(tasks_with_occurrences, local_time)
-     }}
+      present ->
+        {:ok,
+         %{
+           outside_execution_hours:
+             Enum.all?(pairs, fn {task, _occ} ->
+               not execute_window_contains?(task, local_time)
+             end),
+           previous: nearest_previous_occurrence(present, local_time),
+           next: nearest_next_occurrence(present, local_time)
+         }}
+    end
   end
 
   defp nearest_previous_occurrence(tasks_with_occurrences, local_time) do

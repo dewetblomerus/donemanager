@@ -2,6 +2,7 @@ defmodule DoneManager.LinksTest do
   use DoneManager.DataCase, async: true
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import DoneManager.HouseholdsFixtures
   import DoneManager.LinksFixtures
   import DoneManager.TasksFixtures
@@ -171,6 +172,26 @@ defmodule DoneManager.LinksTest do
       assert {:ok, occ} = Links.resolve_execute(scope, link.id, tomorrow_dinner)
       assert is_nil(occ.completed_at)
       assert DateTime.to_date(DateTime.shift_zone!(occ.due_at, "Etc/UTC")) == ~D[2026-06-29]
+    end
+
+    test "a missing occurrence fails loud and is not silently created" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+
+      Repo.delete_all(from(o in TaskOccurrence, where: o.task_id == ^task.id))
+
+      now = utc(~D[2026-06-28], ~T[09:00:00])
+
+      log =
+        capture_log(fn ->
+          assert {:error, :no_occurrence} = Links.resolve_execute(scope, link.id, now)
+        end)
+
+      assert log =~ "no current occurrence"
+      # The reconcile loop owns generation; execute must not paper over the gap.
+      assert Repo.aggregate(from(o in TaskOccurrence, where: o.task_id == ^task.id), :count) == 0
     end
 
     test "returns previous and next occurrence context outside task execution hours" do
