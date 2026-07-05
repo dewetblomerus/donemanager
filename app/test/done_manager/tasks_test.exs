@@ -3,6 +3,7 @@ defmodule DoneManager.TasksTest do
 
   import DoneManager.HouseholdsFixtures
   import DoneManager.TasksFixtures
+  import ExUnit.CaptureLog
 
   alias DoneManager.Tasks
   alias DoneManager.Tasks.TaskOccurrence
@@ -291,6 +292,59 @@ defmodule DoneManager.TasksTest do
       assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:00:00Z])
 
       assert Tasks.current_occurrence(task) == nil
+    end
+  end
+
+  describe "reconcile_occurrences/1 invariant audit" do
+    test "logs a breach when a task carries more than one open occurrence" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      Tasks.current_occurrence(task)
+      |> TaskOccurrence.changeset(%{
+        due_at: ~U[2026-06-28 08:00:00Z],
+        expires_at: ~U[2026-06-28 11:00:00Z]
+      })
+      |> Repo.update!()
+
+      # A duplicate open slot the loop should never have left behind.
+      task
+      |> Ecto.build_assoc(:occurrences)
+      |> TaskOccurrence.changeset(%{
+        due_at: ~U[2026-06-29 08:00:00Z],
+        expires_at: ~U[2026-06-29 11:00:00Z]
+      })
+      |> Repo.insert!()
+
+      log =
+        capture_log(fn ->
+          assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 06:00:00Z])
+        end)
+
+      assert log =~ "invariant breach"
+      assert log =~ "2 open occurrences"
+    end
+
+    test "does not log for a scheduled slot completed before its due time" do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      # Completed early: the next slot collides and is skipped until due_time,
+      # leaving zero open occurrences — the known-benign state, not a breach.
+      Tasks.current_occurrence(task)
+      |> TaskOccurrence.changeset(%{
+        due_at: ~U[2026-06-28 08:00:00Z],
+        expires_at: ~U[2026-06-28 11:00:00Z],
+        completed_at: ~U[2026-06-28 07:00:00Z]
+      })
+      |> Repo.update!()
+
+      log =
+        capture_log(fn ->
+          assert :ok = Tasks.reconcile_occurrences(~U[2026-06-28 07:30:00Z])
+        end)
+
+      refute log =~ "invariant breach"
     end
   end
 

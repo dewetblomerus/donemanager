@@ -26,6 +26,9 @@ defmodule DoneManagerWeb.LinkController do
         conn
         |> put_flash(:info, "This link isn’t assigned to a task yet. Assign it in the app.")
         |> redirect(to: ~p"/households")
+
+      {:error, :no_occurrence} ->
+        no_occurrence(conn)
     end
   end
 
@@ -45,7 +48,19 @@ defmodule DoneManagerWeb.LinkController do
         conn
         |> put_flash(:info, "This link isn’t assigned to a task yet. Assign it in the app.")
         |> redirect(to: ~p"/households")
+
+      {:error, :no_occurrence} ->
+        no_occurrence(conn)
     end
+  end
+
+  # Anomaly: the reconcile loop should always keep an occurrence open, so this
+  # path is logged loudly in Links. Keep the UI soft — the loop heals within a
+  # minute, so invite a retry rather than surfacing an error.
+  defp no_occurrence(conn) do
+    conn
+    |> put_flash(:info, "This task isn’t ready just yet. Give it a moment and tap again.")
+    |> redirect(to: ~p"/households")
   end
 
   defp claim_new_link(conn, id) do
