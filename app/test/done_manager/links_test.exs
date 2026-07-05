@@ -1,11 +1,25 @@
 defmodule DoneManager.LinksTest do
   use DoneManager.DataCase, async: true
 
+  import Ecto.Query
   import DoneManager.HouseholdsFixtures
   import DoneManager.LinksFixtures
   import DoneManager.TasksFixtures
 
   alias DoneManager.Links
+  alias DoneManager.Repo
+  alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskOccurrence
+
+  # task_fixture seeds its eager occurrence at the real clock; pin it onto a
+  # chosen day so date-aware execute windows are deterministic.
+  defp bootstrap_on(task, %DateTime{} = at) do
+    Repo.delete_all(from(o in TaskOccurrence, where: o.task_id == ^task.id))
+    Tasks.reconcile_occurrences(at)
+    task
+  end
+
+  defp utc(date, time), do: DateTime.new!(date, time, "Etc/UTC")
 
   describe "links and bindings" do
     test "create, list with tasks, and bind/unbind" do
@@ -46,12 +60,14 @@ defmodule DoneManager.LinksTest do
   describe "resolve_execute/3" do
     test "returns the current occurrence of a bound scheduled task" do
       scope = owner_scope_fixture()
-      task = task_fixture(scope)
+      task = task_fixture(scope) |> bootstrap_on(utc(~D[2026-06-28], ~T[06:00:00]))
       link = link_fixture(scope)
       bind_fixture(scope, link, task)
 
       # 09:00 falls inside the default task's [valid_from 00:00, expiration 11:00) window.
-      assert {:ok, occurrence} = Links.resolve_execute(scope, link.id, ~U[2026-06-28 09:00:00Z])
+      assert {:ok, occurrence} =
+               Links.resolve_execute(scope, link.id, utc(~D[2026-06-28], ~T[09:00:00]))
+
       assert occurrence.task_id == task.id
     end
 
@@ -105,6 +121,11 @@ defmodule DoneManager.LinksTest do
       bind_fixture(scope, link, breakfast)
       bind_fixture(scope, link, dinner)
 
+      # Pin both occurrences onto the same day so date-aware windows are stable.
+      dawn = utc(~D[2026-06-28], ~T[04:00:00])
+      bootstrap_on(breakfast, dawn)
+      bootstrap_on(dinner, dawn)
+
       morning = ~U[2026-06-28 07:00:00Z]
       evening = ~U[2026-06-28 19:00:00Z]
 
@@ -113,6 +134,43 @@ defmodule DoneManager.LinksTest do
 
       assert {:ok, occ} = Links.resolve_execute(scope, link.id, evening)
       assert occ.task_id == dinner.id
+    end
+
+    test "a second tap the same evening does not reach tomorrow's occurrence" do
+      # Regression: a task whose execute window extends past due_time (and across
+      # midnight) would, after tonight's completion, let a further tap inside the
+      # same window complete tomorrow's freshly-generated occurrence a day early —
+      # which then read "already done" at tomorrow's real dinner.
+      scope = owner_scope_fixture()
+
+      task =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => "21:00:00",
+          "expiration_time" => "01:00:00",
+          "valid_from" => "17:00:00"
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, task)
+      bootstrap_on(task, utc(~D[2026-06-28], ~T[12:00:00]))
+
+      # Tonight's tap completes tonight's occurrence; the loop then opens tomorrow's.
+      first = utc(~D[2026-06-28], ~T[21:13:00])
+      assert {:ok, tonight} = Links.resolve_execute(scope, link.id, first)
+      assert {:completed, _} = Tasks.complete_occurrence(tonight, scope.user.id)
+      Tasks.reconcile_occurrences(first)
+
+      # A second tap 10 minutes later is still inside 17:00-01:00, but must not
+      # act on tomorrow's occurrence.
+      second = utc(~D[2026-06-28], ~T[21:23:00])
+      assert {:warning, _context} = Links.resolve_execute(scope, link.id, second)
+
+      # Tomorrow's dinner remains open and completable.
+      tomorrow_dinner = utc(~D[2026-06-29], ~T[21:05:00])
+      assert {:ok, occ} = Links.resolve_execute(scope, link.id, tomorrow_dinner)
+      assert is_nil(occ.completed_at)
+      assert DateTime.to_date(DateTime.shift_zone!(occ.due_at, "Etc/UTC")) == ~D[2026-06-29]
     end
 
     test "returns previous and next occurrence context outside task execution hours" do

@@ -220,12 +220,13 @@ defmodule DoneManager.Links do
   defp uuidv7?(_id), do: false
 
   defp resolve_actionable(%Link{} = link, now) do
-    local_time = local_time(now, link.household.timezone)
+    timezone = link.household.timezone
+    local_time = local_time(now, timezone)
     tasks = actionable_tasks(link)
 
     tasks
     |> Enum.filter(&execute_window_contains?(&1, local_time))
-    |> select_task_by_occurrence()
+    |> select_task_by_occurrence(now, timezone)
     |> case do
       nil -> outside_window_result(tasks, local_time)
       task -> {:ok, Tasks.current_or_create_occurrence(task)}
@@ -243,18 +244,61 @@ defmodule DoneManager.Links do
   end
 
   # Among the windowed tasks, prefer ones with an open occurrence, then the
-  # earliest due — deterministic routing for a multi-task link.
-  defp select_task_by_occurrence([]), do: nil
+  # earliest due — deterministic routing for a multi-task link. A task's current
+  # occurrence may belong to a *future* day (once tonight's resolves, the loop
+  # opens tomorrow's), so drop any whose window has not started yet: without this
+  # a second tap inside tonight's window would complete tomorrow's occurrence.
+  defp select_task_by_occurrence([], _now, _timezone), do: nil
 
-  defp select_task_by_occurrence(tasks) do
-    pairs = Enum.map(tasks, fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
+  defp select_task_by_occurrence(tasks, now, timezone) do
+    tasks
+    |> Enum.map(fn task -> {task, Tasks.current_or_create_occurrence(task)} end)
+    |> Enum.filter(fn {task, occ} -> occurrence_started?(task, occ, now, timezone) end)
+    |> case do
+      [] ->
+        nil
 
-    open = Enum.reject(pairs, fn {_task, occ} -> Tasks.done?(occ) end)
+      pairs ->
+        open = Enum.reject(pairs, fn {_task, occ} -> Tasks.done?(occ) end)
 
-    ((open == [] && pairs) || open)
-    |> Enum.sort_by(fn {_task, occ} -> occ.due_at end, DateTime)
-    |> List.first()
-    |> elem(0)
+        ((open == [] && pairs) || open)
+        |> Enum.sort_by(fn {_task, occ} -> occ.due_at end, DateTime)
+        |> List.first()
+        |> elem(0)
+    end
+  end
+
+  # A scheduled occurrence is actionable only from when its window opens — the
+  # `valid_from` (or start of day) on the occurrence's own due date. Interval and
+  # timer occurrences have no dated window and stay tappable until done.
+  defp occurrence_started?(%Task{task_type: "scheduled"} = task, occurrence, now, timezone),
+    do: DateTime.compare(now, window_start_instant(task, occurrence, timezone)) != :lt
+
+  defp occurrence_started?(_task, _occurrence, _now, _timezone), do: true
+
+  defp window_start_instant(
+         %Task{valid_from: valid_from},
+         %TaskOccurrence{due_at: due_at},
+         timezone
+       ) do
+    due_date = due_at |> to_local(timezone) |> DateTime.to_date()
+    local_instant(due_date, valid_from || ~T[00:00:00], timezone)
+  end
+
+  defp to_local(%DateTime{} = utc, timezone) do
+    case DateTime.shift_zone(utc, timezone) do
+      {:ok, local} -> local
+      {:error, _} -> utc
+    end
+  end
+
+  defp local_instant(date, time, timezone) do
+    case DateTime.new(date, time, timezone) do
+      {:ok, dt} -> DateTime.shift_zone!(dt, "Etc/UTC")
+      {:ambiguous, first, _second} -> DateTime.shift_zone!(first, "Etc/UTC")
+      {:gap, _before, just_after} -> DateTime.shift_zone!(just_after, "Etc/UTC")
+      {:error, _} -> DateTime.new!(date, time, "Etc/UTC")
+    end
   end
 
   defp outside_window_result([], _local_time), do: {:error, :unassigned}
