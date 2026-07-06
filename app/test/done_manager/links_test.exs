@@ -162,16 +162,75 @@ defmodule DoneManager.LinksTest do
       assert {:completed, _} = Tasks.complete_occurrence(tonight, scope.user.id)
       Tasks.reconcile_occurrences(first)
 
-      # A second tap 10 minutes later is still inside 17:00-01:00, but must not
-      # act on tomorrow's occurrence.
+      # A second tap 10 minutes later is still inside 17:00-01:00: it surfaces
+      # tonight's already-done occurrence (UI reads "already done"), never
+      # tomorrow's freshly-generated one.
       second = utc(~D[2026-06-28], ~T[21:23:00])
-      assert {:warning, _context} = Links.resolve_execute(scope, link.id, second)
+      assert {:ok, still_tonight} = Links.resolve_execute(scope, link.id, second)
+      assert still_tonight.id == tonight.id
+      refute is_nil(still_tonight.completed_at)
 
       # Tomorrow's dinner remains open and completable.
       tomorrow_dinner = utc(~D[2026-06-29], ~T[21:05:00])
       assert {:ok, occ} = Links.resolve_execute(scope, link.id, tomorrow_dinner)
       assert is_nil(occ.completed_at)
       assert DateTime.to_date(DateTime.shift_zone!(occ.due_at, "Etc/UTC")) == ~D[2026-06-29]
+    end
+
+    test "a re-tap after tonight's dinner is done shows tonight's dinner, not breakfast" do
+      # Regression: the dogfood tag drives both breakfast and dinner. Once tonight's
+      # dinner is completed the reconcile loop opens *tomorrow's* dinner occurrence,
+      # which occurrence_started?/4 rightly drops (its window opens tomorrow). The
+      # tap then fell through to the outside-hours context, whose nearest-window
+      # math picked *breakfast* (window ended ~9h ago) over dinner (cross-midnight
+      # ~19h) — so a re-tap during dinner showed the breakfast UI instead of
+      # "already done" for the dinner your partner just handled.
+      scope = owner_scope_fixture()
+
+      breakfast =
+        task_fixture(scope, %{
+          "name" => "Dog breakfast",
+          "due_time" => "08:00:00",
+          "expiration_time" => "11:00:00",
+          "valid_from" => "05:00:00"
+        })
+
+      dinner =
+        task_fixture(scope, %{
+          "name" => "Dog dinner",
+          "due_time" => "21:00:00",
+          "expiration_time" => "01:00:00",
+          "valid_from" => "17:00:00"
+        })
+
+      link = link_fixture(scope)
+      bind_fixture(scope, link, breakfast)
+      bind_fixture(scope, link, dinner)
+
+      dawn = utc(~D[2026-06-28], ~T[04:00:00])
+      bootstrap_on(breakfast, dawn)
+      bootstrap_on(dinner, dawn)
+
+      # Your partner completes tonight's dinner at 20:39, before the 21:00 due —
+      # so the next slot still collides with tonight's and no roll-forward happens.
+      first = utc(~D[2026-06-28], ~T[20:39:00])
+      assert {:ok, tonight} = Links.resolve_execute(scope, link.id, first)
+      assert tonight.task_id == dinner.id
+      assert {:completed, _} = Tasks.complete_occurrence(tonight, scope.user.id)
+
+      # After 21:00 a reconcile tick opens *tomorrow's* dinner (current occurrence
+      # is now tomorrow's), which occurrence_started?/4 rightly drops.
+      Tasks.reconcile_occurrences(utc(~D[2026-06-28], ~T[21:05:00]))
+
+      # You re-tap at 21:10, still inside 17:00-01:00. This must surface tonight's
+      # already-done dinner (so the UI reads "already done") — not the breakfast
+      # context and not tomorrow's fresh occurrence.
+      second = utc(~D[2026-06-28], ~T[21:10:00])
+      assert {:ok, occ} = Links.resolve_execute(scope, link.id, second)
+
+      assert occ.task_id == dinner.id
+      refute is_nil(occ.completed_at)
+      assert DateTime.to_date(DateTime.shift_zone!(occ.due_at, "Etc/UTC")) == ~D[2026-06-28]
     end
 
     test "a missing occurrence fails loud and is not silently created" do

@@ -179,7 +179,7 @@ defmodule DoneManager.Links do
 
         link
         |> actionable_tasks()
-        |> tasks_with_occurrences()
+        |> tasks_with_occurrences(now, link.household.timezone)
         |> status_context(local_time)
     end
   end
@@ -227,7 +227,7 @@ defmodule DoneManager.Links do
   defp resolve_actionable(%Link{} = link, now) do
     timezone = link.household.timezone
     local_time = local_time(now, timezone)
-    pairs = tasks_with_occurrences(actionable_tasks(link))
+    pairs = tasks_with_occurrences(actionable_tasks(link), now, timezone)
 
     in_window =
       Enum.filter(pairs, fn {task, occ} ->
@@ -247,18 +247,37 @@ defmodule DoneManager.Links do
   # architecture/scheduling.md). Timers are exempt: they are generated on demand
   # by the tap itself, so they legitimately create here (including a fresh one
   # once the prior countdown is done).
-  defp tasks_with_occurrences(tasks) do
-    Enum.map(tasks, fn task -> {task, occurrence_for(task)} end)
+  defp tasks_with_occurrences(tasks, now, timezone) do
+    Enum.map(tasks, fn task -> {task, occurrence_for(task, now, timezone)} end)
   end
 
-  defp occurrence_for(%Task{task_type: "timer"} = task),
+  defp occurrence_for(%Task{task_type: "timer"} = task, _now, _timezone),
     do: Tasks.current_or_create_occurrence(task)
 
-  defp occurrence_for(%Task{} = task) do
-    occurrence = Tasks.current_occurrence(task)
+  defp occurrence_for(%Task{} = task, now, timezone) do
+    occurrence = covering_or_latest_occurrence(task, now, timezone)
     if is_nil(occurrence), do: log_missing_occurrence(task)
     occurrence
   end
+
+  # The latest occurrence is not always the one for *now*: once a slot completes
+  # and its due_time passes, the reconcile loop opens the next day's occurrence
+  # while we may still be inside this slot's (past-midnight) window. Prefer the
+  # occurrence whose window currently contains `now` — so a re-tap or status
+  # visit sees tonight's already-done slot, not tomorrow's not-yet-open one.
+  defp covering_or_latest_occurrence(%Task{} = task, now, timezone) do
+    occurrences = Tasks.recent_occurrences(task)
+
+    Enum.find(occurrences, fn occ -> occurrence_covers?(task, occ, now, timezone) end) ||
+      List.first(occurrences)
+  end
+
+  defp occurrence_covers?(%Task{task_type: "scheduled"} = task, occurrence, now, timezone) do
+    DateTime.compare(now, window_start_instant(task, occurrence, timezone)) != :lt and
+      (is_nil(occurrence.expires_at) or DateTime.compare(now, occurrence.expires_at) == :lt)
+  end
+
+  defp occurrence_covers?(_task, _occurrence, _now, _timezone), do: false
 
   defp log_missing_occurrence(%Task{id: id, name: name}) do
     Logger.error(
