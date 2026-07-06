@@ -164,6 +164,17 @@ defmodule DoneManager.Tasks do
     |> Repo.one()
   end
 
+  @doc "A task's most recent occurrences, newest first (default 3)."
+  def recent_occurrences(%Task{id: task_id}, limit \\ 3) do
+    from(o in TaskOccurrence,
+      where: o.task_id == ^task_id,
+      order_by: [desc: o.inserted_at],
+      limit: ^limit,
+      preload: [:completed_by]
+    )
+    |> Repo.all()
+  end
+
   @doc "The most recent completed occurrence for a task, or nil."
   def last_completed_occurrence(%Task{id: task_id}) do
     from(o in TaskOccurrence,
