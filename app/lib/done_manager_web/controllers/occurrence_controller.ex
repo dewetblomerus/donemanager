@@ -12,6 +12,7 @@ defmodule DoneManagerWeb.OccurrenceController do
   use DoneManagerWeb, :controller
 
   alias DoneManager.Tasks
+  alias DoneManager.Tasks.TaskOccurrence
 
   def execute(conn, %{"id" => id}) do
     scope = conn.assigns.current_scope
@@ -48,7 +49,14 @@ defmodule DoneManagerWeb.OccurrenceController do
   defp execute_occurrence(%{task: %{task_type: "timer"}} = occurrence, _user_id),
     do: Tasks.start_timer_occurrence(occurrence)
 
+  # A scheduled slot whose window has passed must not be completed on a late tap
+  # (e.g. tapping yesterday's reminder), which would falsely read "done" and risk
+  # double-doing today's occurrence. Render the expired state instead.
   defp execute_occurrence(occurrence, user_id) do
-    Tasks.complete_occurrence(occurrence, user_id)
+    if TaskOccurrence.expired?(occurrence) do
+      {:expired, occurrence}
+    else
+      Tasks.complete_occurrence(occurrence, user_id)
+    end
   end
 end

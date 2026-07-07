@@ -93,7 +93,9 @@ defmodule DoneManager.Notifications do
     status =
       case Pushover.send_message(user.pushover_user_key, "#{task.name} is due.",
              title: task.name,
-             priority: priority
+             priority: priority,
+             url: occurrence_execute_url(occurrence),
+             url_title: "Mark done"
            ) do
         :ok ->
           "ok"
@@ -104,6 +106,12 @@ defmodule DoneManager.Notifications do
       end
 
     upsert_delivery(occurrence.id, user.id, delivery, status, now)
+  end
+
+  # Deep-links the reminder to this exact occurrence's execute action, so tapping
+  # it acts on the notified occurrence rather than a freshly-generated one.
+  defp occurrence_execute_url(occurrence) do
+    DoneManagerWeb.Endpoint.url() <> "/occurrences/#{occurrence.id}/execute"
   end
 
   defp upsert_delivery(occurrence_id, user_id, delivery, status, now) do

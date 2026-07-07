@@ -144,4 +144,15 @@ defmodule DoneManager.Tasks.TaskOccurrence do
 
   def resolved?(%__MODULE__{expires_at: expires_at}, now),
     do: DateTime.compare(expires_at, now) != :gt
+
+  @doc """
+  Whether the occurrence is expired and still open — past its `expires_at` and
+  not completed. A completed occurrence is never "expired"; it is done.
+  """
+  def expired?(occurrence, now \\ DateTime.utc_now())
+  def expired?(%__MODULE__{completed_at: %DateTime{}}, _now), do: false
+  def expired?(%__MODULE__{expires_at: nil}, _now), do: false
+
+  def expired?(%__MODULE__{expires_at: expires_at}, now),
+    do: DateTime.compare(expires_at, now) != :gt
 end
