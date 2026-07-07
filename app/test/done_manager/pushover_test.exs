@@ -44,6 +44,22 @@ defmodule DoneManager.PushoverTest do
     assert :ok = Pushover.send_message("u-abc123", "Hello")
   end
 
+  test "includes url and url_title when given" do
+    Req.Test.stub(Pushover, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      params = URI.decode_query(body)
+      assert params["url"] == "https://example.com/act"
+      assert params["url_title"] == "Mark done"
+      Req.Test.json(conn, %{"status" => 1})
+    end)
+
+    assert :ok =
+             Pushover.send_message("u-abc123", "Hello",
+               url: "https://example.com/act",
+               url_title: "Mark done"
+             )
+  end
+
   test "returns an error when Pushover rejects the request" do
     Req.Test.stub(Pushover, fn conn ->
       conn

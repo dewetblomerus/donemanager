@@ -20,6 +20,8 @@ defmodule DoneManager.Pushover do
   Options:
     * `:title` — optional notification title.
     * `:priority` — optional Pushover priority (e.g. `-1` for silent delivery).
+    * `:url` — optional supplementary URL shown as a tappable action.
+    * `:url_title` — optional label for the supplementary URL.
 
   Returns `:ok`, or `{:error, reason}` on a transport failure, non-200 response,
   or a Pushover body with `status != 1`.
@@ -34,6 +36,8 @@ defmodule DoneManager.Pushover do
       %{token: app_token(), user: user_key, message: message, sound: "intermission"}
       |> maybe_put(:title, opts[:title])
       |> maybe_put(:priority, opts[:priority])
+      |> maybe_put(:url, opts[:url])
+      |> maybe_put(:url_title, opts[:url_title])
 
     case Req.post(req_options(form: params)) do
       {:ok, %Req.Response{status: 200, body: %{"status" => 1}}} ->

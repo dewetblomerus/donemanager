@@ -35,6 +35,8 @@ defmodule DoneManager.NotificationsTest do
       assert_received {:pushover, params}
       assert params["user"] == "u-owner"
       assert params["title"] == task.name
+      assert params["url"] =~ "/occurrences/#{occ.id}/execute"
+      assert params["url_title"] == "Mark done"
 
       delivery = get_delivery(occ.id, owner.id)
       assert delivery.notification_type == "reminder"

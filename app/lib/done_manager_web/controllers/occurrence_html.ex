@@ -6,6 +6,7 @@ defmodule DoneManagerWeb.OccurrenceHTML do
 
   use DoneManagerWeb, :html
 
+  alias DoneManager.Tasks.TaskOccurrence
   alias DoneManager.Timezones
 
   def show(assigns) do
@@ -32,7 +33,9 @@ defmodule DoneManagerWeb.OccurrenceHTML do
           @occurrence.completed_at &&
             (@outcome != :duplicate || recent_self_completion?(@occurrence, @current_user_id)) &&
             "bg-success text-success-content",
-          !@occurrence.completed_at && @outcome not in [:started, :running] &&
+          !@occurrence.completed_at && expired?(@occurrence) && "bg-warning text-warning-content",
+          !@occurrence.completed_at && !expired?(@occurrence) &&
+            @outcome not in [:started, :running] &&
             "bg-base-100 text-base-content"
         ]}>
           <p class="text-4xl font-bold leading-none">
@@ -45,7 +48,16 @@ defmodule DoneManagerWeb.OccurrenceHTML do
           <p :if={@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
             Completed by {completed_by(@occurrence)} at {completed_at(@occurrence)}
           </p>
-          <p :if={!@occurrence.completed_at} class="mt-4 text-lg font-medium leading-7 opacity-90">
+          <p
+            :if={!@occurrence.completed_at && expired?(@occurrence)}
+            class="mt-4 text-lg font-medium leading-7 opacity-90"
+          >
+            This slot expired at {expires_at(@occurrence)} and was not done.
+          </p>
+          <p
+            :if={!@occurrence.completed_at && !expired?(@occurrence)}
+            class="mt-4 text-lg font-medium leading-7 opacity-90"
+          >
             Due at {due_at(@occurrence)}
           </p>
 
@@ -138,7 +150,12 @@ defmodule DoneManagerWeb.OccurrenceHTML do
   defp status_label(%{completed_at: %DateTime{}}, _outcome, _recent), do: "done"
   defp status_label(_occurrence, :started, _recent), do: "Timer started"
   defp status_label(_occurrence, :running, _recent), do: "Timer running"
-  defp status_label(_occurrence, _outcome, _recent), do: "open"
+
+  defp status_label(occurrence, _outcome, _recent) do
+    if expired?(occurrence), do: "expired", else: "open"
+  end
+
+  defp expired?(occurrence), do: TaskOccurrence.expired?(occurrence)
 
   defp recent_self_completion?(
          %{completed_at: %DateTime{} = completed_at, completed_by_id: user_id},
@@ -171,6 +188,10 @@ defmodule DoneManagerWeb.OccurrenceHTML do
 
   defp due_at(%{due_at: due_at, task: %{household: %{timezone: timezone}}}) do
     Timezones.format(due_at, timezone)
+  end
+
+  defp expires_at(%{expires_at: expires_at, task: %{household: %{timezone: timezone}}}) do
+    Timezones.format(expires_at, timezone)
   end
 
   defp running_timer?(%{completed_at: nil, task: %{task_type: "timer"}}), do: true

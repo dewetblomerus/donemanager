@@ -75,6 +75,28 @@ defmodule DoneManagerWeb.LinkFlowTest do
       assert html =~ "bg-red-900"
     end
 
+    test "executing an expired scheduled occurrence shows expired and does not complete it", %{
+      conn: conn
+    } do
+      scope = owner_scope_fixture()
+      task = task_fixture(scope)
+
+      occurrence =
+        task
+        |> Tasks.current_occurrence()
+        |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(), -60, :second))
+        |> Repo.update!()
+
+      conn = log_in_user(conn, scope.user)
+      conn = get(conn, ~p"/occurrences/#{occurrence.id}/execute")
+
+      html = html_response(conn, 200)
+      assert html =~ "expired"
+      assert html =~ "bg-warning"
+      refute html =~ "bg-success"
+      refute Tasks.done?(Tasks.current_occurrence(task))
+    end
+
     test "a bound timer link starts a countdown and shows the due time", %{conn: conn} do
       scope = owner_scope_fixture()
 
