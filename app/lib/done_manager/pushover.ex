@@ -31,7 +31,7 @@ defmodule DoneManager.Pushover do
 
   def send_message(user_key, message, opts) do
     params =
-      %{token: app_token(), user: user_key, message: message}
+      %{token: app_token(), user: user_key, message: message, sound: "intermission"}
       |> maybe_put(:title, opts[:title])
       |> maybe_put(:priority, opts[:priority])
 
