@@ -6,7 +6,7 @@ Plain-language description of what people do with Done Manager, for a product re
 
 A household tracks shared chores — feeding the dog, moving laundry, emptying the mop — by tapping a phone on an NFC tag stuck near where the chore happens. The tag opens a web page that marks the chore done. Some chores also nag the household until someone does them.
 
-The first release is routine management only: tapping completes chores and the web app shows what's done and what's due. Notifying the rest of the household (push notifications) comes later.
+Tapping completes chores, the web app shows what's done and what's due, and overdue chores send push notifications that the household can act on from the notification itself.
 
 ## Getting started
 
@@ -61,12 +61,12 @@ When the local day rolls over at midnight, the day resets: a chore that was Done
 
 **When "Done" flips back: local midnight.** A finished chore reads Done until the local day rolls over — not the moment its window closes — so an end-of-evening glance still shows everything done. (The alternative, flipping at the chore's expiration time, was considered and rejected for that reason.)
 
-## Getting notified (later)
+## Getting notified
 
-Push notifications are a later addition, not in the first release. The intended shape:
+When a chore is overdue, the household gets a push notification (Pushover) nagging them until someone does it. Every member who has set up notifications is reminded; how often a chore re-nags is part of the chore's setup.
 
-- The household decides who should be notified about a chore. Each person decides where their notifications go and their quiet hours.
-- Quiet hours are per person, so two people in the same household can sleep on different schedules. A confirmation that a chore was done still reaches everyone — but silently during a person's quiet hours, so they simply see it in the morning.
-- Reminders for *overdue* chores generally wait until a person's waking hours, with a few time-sensitive exceptions. The exact rules are still being worked out.
+- Each person sets up where their notifications go and their quiet hours. Quiet hours are per person, so two people in the same household can sleep on different schedules — a reminder still arrives during someone's quiet hours, but silently, so they simply see it in the morning.
+- **The reminder is actionable.** It carries a "Mark done" link, so a person can complete the chore straight from the notification — one tap, no hunting for the tag or the app. They land on the same phone-formatted confirmation page a tag tap shows.
+- **A stale reminder is safe.** Notifications linger in the phone's tray, so someone might tap yesterday's reminder today. The link always points at *that* chore — the specific one the reminder was about, never a fresh one for today. If that slot's window has already passed, tapping shows it as **expired** and does *not* mark it done, so a late tap can't quietly claim a missed chore was finished (which could get the dog fed twice).
 
-Until then, completing a chore from afar is just opening the task in the web app and marking it done — the same authenticated action as a tap, without needing to be near the tag.
+Completing a chore from afar without a notification is just opening the task in the web app and marking it done — the same authenticated action as a tap, without needing to be near the tag.
