@@ -1,6 +1,6 @@
 # User Flows
 
-Plain-language description of what people do with Done Manager, for a product reader. No database, API, or implementation detail — those live in the other architecture docs. This is the *what it feels like to use*.
+Plain-language description of what people do with Shared Routines, for a product reader. No database, API, or implementation detail — those live in the other architecture docs. This is the *what it feels like to use*.
 
 ## What the app is for
 

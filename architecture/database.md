@@ -1,6 +1,6 @@
 # Database
 
-This is the current implemented database shape for Done Manager. Planned notification
+This is the current implemented database shape for Shared Routines. Planned notification
 tables and scheduling behavior are described after the current schema.
 
 ## Entity Relationship Diagram

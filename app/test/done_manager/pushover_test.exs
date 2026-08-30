@@ -16,12 +16,12 @@ defmodule DoneManager.PushoverTest do
       assert params["token"] == "test-token"
       assert params["user"] == "u-abc123"
       assert params["message"] == "Hello"
-      assert params["title"] == "Done Manager"
+      assert params["title"] == "Shared Routines"
 
       Req.Test.json(conn, %{"status" => 1, "request" => "abc"})
     end)
 
-    assert :ok = Pushover.send_message("u-abc123", "Hello", title: "Done Manager")
+    assert :ok = Pushover.send_message("u-abc123", "Hello", title: "Shared Routines")
   end
 
   test "includes priority when given" do

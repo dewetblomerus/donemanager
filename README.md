@@ -1,4 +1,4 @@
-# Done Manager
+# Shared Routines
 
 A monorepo for a home routine coordination platform.
 

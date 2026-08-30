@@ -1,6 +1,6 @@
 # Architecture
 
-This directory captures high-level system architecture for Done Manager.
+This directory captures high-level system architecture for Shared Routines.
 
 - [Database](database.md)
 - [Scheduling](scheduling.md)
@@ -18,7 +18,7 @@ flowchart TB
     phone[Phone browser]
     tag[NFC tag / QR code]
     nfcTools[NFC Tools]
-    app[Done Manager - Phoenix/LiveView]
+    app[Shared Routines - Phoenix/LiveView]
     auth0[Auth0]
 
     user --> phone
@@ -42,7 +42,7 @@ flowchart TB
 - **Phones** are the main interface: a browser that opens the tag's link, signs in through Auth0 if needed, and shows the confirmation page.
 - **NFC tags / QR codes** are placed near physical task locations and carry a single public link — no secret.
 - **NFC Tools** writes the link URL (given by the web app) onto a tag.
-- **Done Manager** (Phoenix + LiveView) authenticates the session, authorizes household membership, completes the occurrence, and renders the web UI.
+- **Shared Routines** (Phoenix + LiveView) authenticates the session, authorizes household membership, completes the occurrence, and renders the web UI.
 - **Auth0** authenticates people; authorization is household membership inside the app.
 
 Pushover and push notifications are post-MVP and intentionally absent from the V1 flow.
