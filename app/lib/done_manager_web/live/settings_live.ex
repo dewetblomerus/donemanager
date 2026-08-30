@@ -73,7 +73,7 @@ defmodule DoneManagerWeb.SettingsLive do
     user = socket.assigns.current_scope.user
 
     flash =
-      case Pushover.send_message(user.pushover_user_key, "Test from Done Manager") do
+      case Pushover.send_message(user.pushover_user_key, "Test from Shared Routines") do
         :ok -> {:info, "Test notification sent."}
         {:error, _reason} -> {:error, "Could not send test notification."}
       end
